@@ -45,9 +45,9 @@ export async function DELETE(
       .select('player_id')
       .eq('match_id', matchId)
 
-    const battingPlayerIds = [...new Set(battingPerfs?.map(p => p.player_id) || [])]
-    const bowlingPlayerIds = [...new Set(bowlingPerfs?.map(p => p.player_id) || [])]
-    const fieldingPlayerIds = [...new Set(fieldingPerfs?.map(p => p.player_id) || [])]
+    const battingPlayerIds = Array.from(new Set(battingPerfs?.map(p => p.player_id) || []))
+    const bowlingPlayerIds = Array.from(new Set(bowlingPerfs?.map(p => p.player_id) || []))
+    const fieldingPlayerIds = Array.from(new Set(fieldingPerfs?.map(p => p.player_id) || []))
 
     // Delete all related records in order (due to foreign key constraints)
     
