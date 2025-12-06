@@ -258,9 +258,9 @@ export async function POST(request: NextRequest) {
     }
     
     // Update season stats for all players
-    const uniqueBatting = [...new Set(battingPlayerIds)]
-    const uniqueBowling = [...new Set(bowlingPlayerIds)]
-    const uniqueFielding = [...new Set(fieldingPlayerIds)]
+    const uniqueBatting = Array.from(new Set(battingPlayerIds))
+    const uniqueBowling = Array.from(new Set(bowlingPlayerIds))
+    const uniqueFielding = Array.from(new Set(fieldingPlayerIds))
     
     for (const playerId of uniqueBatting) {
       await updatePlayerSeasonStats(playerId, seasonId)
