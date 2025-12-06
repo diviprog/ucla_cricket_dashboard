@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['cheerio'],
+  experimental: {
+    serverComponentsExternalPackages: ['cheerio'],
+  },
   images: {
     remotePatterns: [
       {
@@ -14,6 +16,12 @@ const nextConfig = {
   },
   typescript: {
     ignoreBuildErrors: false,
+  },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = [...(config.externals || []), 'cheerio']
+    }
+    return config
   },
 }
 
