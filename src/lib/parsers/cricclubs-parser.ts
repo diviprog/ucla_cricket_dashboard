@@ -54,7 +54,7 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
     
     // Parse batting table rows
     const battingTable = inningsDiv.find('.match-table-innings table').first()
-    battingTable.find('tbody tr').each((_, row) => {
+    battingTable.find('tbody tr').each((_: number, row: any) => {
       const $row = $(row)
       const cells = $row.find('th')
       
@@ -192,7 +192,7 @@ function parseBowlingTable($: any, inningsDiv: any): ParsedBowlingEntry[] {
   
   // Try 3: Look for any table after the batting table that has bowling-like headers
   if (!bowlingTable.length) {
-    inningsDiv.find('table').each((_, table) => {
+    inningsDiv.find('table').each((_: number, table: any) => {
       const $table = $(table)
       const headerText = $table.find('th').text().toLowerCase()
       // Look for bowling indicators: overs (O), maidens (M), wickets (W)
@@ -221,7 +221,7 @@ function parseBowlingTable($: any, inningsDiv: any): ParsedBowlingEntry[] {
     rows = bowlingTable.find('tr').not(':first') // Skip header row
   }
   
-  rows.each((_, row) => {
+  rows.each((_: number, row: any) => {
     const entry = parseBowlingRow($, $(row))
     if (entry) bowlingEntries.push(entry)
   })
@@ -274,7 +274,7 @@ function parseBowlingRow($: any, $row: any): ParsedBowlingEntry | null {
   
   // Extract all numeric values from the remaining cells
   const numericValues: number[] = []
-  dataCells.each((_, cell) => {
+  dataCells.each((_: number, cell: any) => {
     const text = $(cell).text().trim().replace(/[<>]/g, '')
     const num = parseFloat(text)
     if (!isNaN(num)) {
@@ -327,7 +327,7 @@ function parseBowlingRow($: any, $row: any): ParsedBowlingEntry | null {
   // Look for wides and no-balls in any remaining cells
   let wides = 0
   let noBalls = 0
-  dataCells.each((_, cell) => {
+  dataCells.each((_: number, cell: any) => {
     const text = $(cell).text().trim().toLowerCase()
     const widesMatch = text.match(/(\d+)\s*w(?:\)|$|\s)/i)
     const nbMatch = text.match(/(\d+)\s*nb/i)
