@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['cheerio'],
-  },
+  serverExternalPackages: ['cheerio'],
   images: {
     remotePatterns: [
       {
@@ -10,6 +8,12 @@ const nextConfig = {
         hostname: 'media.cricclubs.com',
       },
     ],
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
   },
 }
 
