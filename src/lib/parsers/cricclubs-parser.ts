@@ -1,5 +1,4 @@
 import * as cheerio from 'cheerio'
-import type { CheerioAPI, Cheerio, AnyNode } from 'cheerio'
 import type { ParsedMatchData, ParsedBattingEntry, ParsedBowlingEntry, ParsedFieldingEntry } from '@/types/models'
 import { createHash } from 'crypto'
 
@@ -179,7 +178,8 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
  * - Table with "Bowling" header
  * - Any table that looks like a bowling table (has O, M, R, W columns)
  */
-function parseBowlingTable($: CheerioAPI, inningsDiv: Cheerio<AnyNode>): ParsedBowlingEntry[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseBowlingTable($: any, inningsDiv: any): ParsedBowlingEntry[] {
   const bowlingEntries: ParsedBowlingEntry[] = []
   
   // Try 1: Find the bowling section in .match-innings-bottom-all
@@ -233,7 +233,8 @@ function parseBowlingTable($: CheerioAPI, inningsDiv: Cheerio<AnyNode>): ParsedB
  * Parse a single bowling row from CricClubs
  * Row structure varies but typically includes: Name, O, M, Dot/R, R/Dot, W, Econ
  */
-function parseBowlingRow($: CheerioAPI, $row: Cheerio<AnyNode>): ParsedBowlingEntry | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseBowlingRow($: any, $row: any): ParsedBowlingEntry | null {
   const cells = $row.find('td, th')
   if (cells.length < 5) return null
   
