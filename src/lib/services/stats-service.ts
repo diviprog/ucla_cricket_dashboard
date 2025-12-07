@@ -292,7 +292,16 @@ export async function recalculateAllSeasonStats(seasonId: string): Promise<void>
 }
 
 /**
+ * Helper to check if a player is an "Unclaimed" placeholder
+ */
+function isUnclaimedPlayer(playerName?: string): boolean {
+  if (!playerName) return false
+  return playerName.startsWith('Unclaimed')
+}
+
+/**
  * Get batting season stats with player info
+ * Excludes "Unclaimed" players from the leaderboard
  */
 export async function getSeasonLeaderboard(seasonId?: string) {
   let query = supabase
@@ -316,11 +325,14 @@ export async function getSeasonLeaderboard(seasonId?: string) {
     return []
   }
   
-  return data || []
+  // Filter out Unclaimed players
+  const filtered = (data || []).filter(stat => !isUnclaimedPlayer(stat.player?.name))
+  return filtered
 }
 
 /**
  * Get bowling season stats with player info
+ * Excludes "Unclaimed" players from the leaderboard
  */
 export async function getBowlingLeaderboard(seasonId?: string) {
   let query = supabase
@@ -344,11 +356,14 @@ export async function getBowlingLeaderboard(seasonId?: string) {
     return []
   }
   
-  return data || []
+  // Filter out Unclaimed players
+  const filtered = (data || []).filter(stat => !isUnclaimedPlayer(stat.player?.name))
+  return filtered
 }
 
 /**
  * Get fielding season stats with player info
+ * Excludes "Unclaimed" players from the leaderboard
  */
 export async function getFieldingLeaderboard(seasonId?: string) {
   let query = supabase
@@ -372,7 +387,9 @@ export async function getFieldingLeaderboard(seasonId?: string) {
     return []
   }
   
-  return data || []
+  // Filter out Unclaimed players
+  const filtered = (data || []).filter(stat => !isUnclaimedPlayer(stat.player?.name))
+  return filtered
 }
 
 /**
@@ -480,8 +497,8 @@ export async function getTopPerformers(seasonId?: string) {
     }
   }
   
-  // Top run scorer
-  const { data: topRunScorer } = await supabase
+  // Top run scorer (fetch multiple to filter out Unclaimed)
+  const { data: topRunScorerList } = await supabase
     .from('player_season_stats')
     .select(`
       *,
@@ -489,11 +506,11 @@ export async function getTopPerformers(seasonId?: string) {
     `)
     .eq('season_id', seasonId)
     .order('total_runs', { ascending: false })
-    .limit(1)
-    .single()
+    .limit(10)
+  const topRunScorer = (topRunScorerList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   // Best average (min 1 innings with at least 1 dismissal)
-  const { data: bestAverage } = await supabase
+  const { data: bestAverageList } = await supabase
     .from('player_season_stats')
     .select(`
       *,
@@ -503,11 +520,11 @@ export async function getTopPerformers(seasonId?: string) {
     .gte('matches_played', 1)
     .gt('dismissals', 0)
     .order('average', { ascending: false })
-    .limit(1)
-    .single()
+    .limit(10)
+  const bestAverage = (bestAverageList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   // Best strike rate (min 10 balls)
-  const { data: bestStrikeRate } = await supabase
+  const { data: bestStrikeRateList } = await supabase
     .from('player_season_stats')
     .select(`
       *,
@@ -516,11 +533,11 @@ export async function getTopPerformers(seasonId?: string) {
     .eq('season_id', seasonId)
     .gte('total_balls', 10)
     .order('strike_rate', { ascending: false })
-    .limit(1)
-    .single()
+    .limit(10)
+  const bestStrikeRate = (bestStrikeRateList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   // Top wicket taker
-  const { data: topWicketTaker } = await supabase
+  const { data: topWicketTakerList } = await supabase
     .from('bowling_season_stats')
     .select(`
       *,
@@ -529,11 +546,11 @@ export async function getTopPerformers(seasonId?: string) {
     .eq('season_id', seasonId)
     .gt('total_wickets', 0)
     .order('total_wickets', { ascending: false })
-    .limit(1)
-    .single()
+    .limit(10)
+  const topWicketTaker = (topWicketTakerList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   // Best bowling average (min 1 match, at least 1 wicket)
-  const { data: bestBowlingAverage } = await supabase
+  const { data: bestBowlingAverageList } = await supabase
     .from('bowling_season_stats')
     .select(`
       *,
@@ -543,11 +560,11 @@ export async function getTopPerformers(seasonId?: string) {
     .gte('matches_bowled', 1)
     .gt('total_wickets', 0)
     .order('average', { ascending: true }) // Lower is better for bowling
-    .limit(1)
-    .single()
+    .limit(10)
+  const bestBowlingAverage = (bestBowlingAverageList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   // Best economy (min 2 overs)
-  const { data: bestEconomy } = await supabase
+  const { data: bestEconomyList } = await supabase
     .from('bowling_season_stats')
     .select(`
       *,
@@ -556,11 +573,11 @@ export async function getTopPerformers(seasonId?: string) {
     .eq('season_id', seasonId)
     .gte('total_overs', 2)
     .order('economy', { ascending: true }) // Lower is better
-    .limit(1)
-    .single()
+    .limit(10)
+  const bestEconomy = (bestEconomyList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   // Top fielder
-  const { data: topFielder } = await supabase
+  const { data: topFielderList } = await supabase
     .from('fielding_season_stats')
     .select(`
       *,
@@ -569,8 +586,8 @@ export async function getTopPerformers(seasonId?: string) {
     .eq('season_id', seasonId)
     .gt('total_dismissals', 0)
     .order('total_dismissals', { ascending: false })
-    .limit(1)
-    .single()
+    .limit(10)
+  const topFielder = (topFielderList || []).find(s => !isUnclaimedPlayer(s.player?.name))
   
   return {
     topRunScorer: topRunScorer ? {
