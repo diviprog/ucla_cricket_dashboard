@@ -66,11 +66,9 @@ export async function POST(request: NextRequest) {
       !t.toLowerCase().includes(ourTeamName.toLowerCase())
     ) || 'Unknown'
     
-    // Determine result
+    // Determine result based on scores (ignore parsed result text as it's unreliable)
     let result = 'no_result'
-    if (parsedData.result) {
-      result = parsedData.result
-    } else if (ourInnings && opponentInnings) {
+    if (ourInnings && opponentInnings) {
       if (ourInnings.total > opponentInnings.total) result = 'win'
       else if (ourInnings.total < opponentInnings.total) result = 'loss'
       else result = 'tie'
