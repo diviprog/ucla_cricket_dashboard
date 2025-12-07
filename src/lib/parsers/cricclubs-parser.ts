@@ -2,10 +2,70 @@ import * as cheerio from 'cheerio'
 import type { ParsedMatchData, ParsedBattingEntry, ParsedBowlingEntry, ParsedFieldingEntry } from '@/types/models'
 import { createHash } from 'crypto'
 
+// Custom error class for parsing errors
+export class ParseError extends Error {
+  constructor(
+    message: string,
+    public code: 'WRONG_PAGE_TYPE' | 'NO_BATTING_DATA' | 'NO_TEAMS_FOUND' | 'INVALID_HTML' | 'PARSE_FAILED',
+    public details?: string
+  ) {
+    super(message)
+    this.name = 'ParseError'
+  }
+}
+
+/**
+ * Detect the page type from CricClubs HTML
+ */
+function detectPageType(html: string): { type: string; isFullScorecard: boolean } {
+  // Check the URL in the saved HTML comment
+  const urlMatch = html.match(/saved from url=\([^)]+\)([^\s"]+)/)
+  const url = urlMatch ? urlMatch[1] : ''
+  
+  if (url.includes('fullScorecard.do')) {
+    return { type: 'Full Scorecard', isFullScorecard: true }
+  } else if (url.includes('info.do')) {
+    return { type: 'Info', isFullScorecard: false }
+  } else if (url.includes('ballbyball.do')) {
+    return { type: 'Ball by Ball', isFullScorecard: false }
+  } else if (url.includes('overbyoverscoreview.do')) {
+    return { type: 'Over by Over Score', isFullScorecard: false }
+  } else if (url.includes('graphsView.do')) {
+    return { type: 'Charts', isFullScorecard: false }
+  }
+  
+  // If no URL found, check for Full Scorecard indicators in the HTML
+  const hasScorecard = html.includes('match-table-innings') && 
+                       (html.includes('innings') || html.includes('Batting')) &&
+                       html.includes('R') && html.includes('B') && html.includes('SR')
+  
+  return { type: hasScorecard ? 'Full Scorecard' : 'Unknown', isFullScorecard: hasScorecard }
+}
+
 /**
  * Parse CricClubs HTML scorecard
+ * @throws {ParseError} When the HTML cannot be parsed
  */
 export function parseCricClubsScorecard(html: string): ParsedMatchData {
+  // Validate HTML is not empty
+  if (!html || html.trim().length < 100) {
+    throw new ParseError(
+      'Invalid HTML content - file appears to be empty or too small',
+      'INVALID_HTML',
+      'The uploaded file does not contain valid HTML content.'
+    )
+  }
+
+  // Detect page type
+  const pageType = detectPageType(html)
+  if (!pageType.isFullScorecard) {
+    throw new ParseError(
+      `Wrong page type: "${pageType.type}"`,
+      'WRONG_PAGE_TYPE',
+      `You uploaded the "${pageType.type}" page. Please download and upload the "Full Scorecard" page from CricClubs instead. Go to the match → click "Full Scorecard" tab → save the page.`
+    )
+  }
+
   const $ = cheerio.load(html)
   
   // Extract match metadata
@@ -159,6 +219,25 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
       extrasBreakdown,
     })
   })
+  
+  // Validate parsed data
+  if (teams[0] === 'Unknown' && teams[1] === 'Unknown') {
+    throw new ParseError(
+      'Could not find team names in the scorecard',
+      'NO_TEAMS_FOUND',
+      'The parser could not extract team names. Make sure you uploaded a valid CricClubs Full Scorecard page.'
+    )
+  }
+  
+  // Check if we have any batting data
+  const totalBattingEntries = innings.reduce((sum, inn) => sum + inn.battingEntries.length, 0)
+  if (totalBattingEntries === 0) {
+    throw new ParseError(
+      'No batting data found in the scorecard',
+      'NO_BATTING_DATA',
+      'The parser could not find any batting entries. This might be the wrong page type. Please upload the "Full Scorecard" page from CricClubs.'
+    )
+  }
   
   return {
     date,

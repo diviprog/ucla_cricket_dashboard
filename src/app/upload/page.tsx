@@ -14,9 +14,13 @@ interface ParsedFile {
     teams: [string, string]
     competition?: string
     result?: string
+    battingEntries?: number
+    bowlingEntries?: number
   } | null
   status: 'pending' | 'parsing' | 'parsed' | 'error'
   error?: string
+  errorCode?: string
+  errorDetails?: string
   content?: string
 }
 
@@ -89,14 +93,20 @@ export default function UploadPage() {
         } else {
           setFiles(prev => prev.map(f => 
             f.id === fileId 
-              ? { ...f, status: 'error', error: result.error }
+              ? { 
+                  ...f, 
+                  status: 'error', 
+                  error: result.error,
+                  errorCode: result.errorCode,
+                  errorDetails: result.details,
+                }
               : f
           ))
         }
       } catch (error) {
         setFiles(prev => prev.map(f => 
           f.id === fileId 
-            ? { ...f, status: 'error', error: 'Failed to parse file' }
+            ? { ...f, status: 'error', error: 'Network error: Failed to parse file', errorCode: 'NETWORK_ERROR' }
             : f
         ))
       }
@@ -198,9 +208,18 @@ export default function UploadPage() {
       <h1 className="text-3xl font-bold text-white mb-2">
         Upload <span className="text-ucla-gold">Match Scorecards</span>
       </h1>
-      <p className="text-muted-foreground mb-8">
+      <p className="text-muted-foreground mb-2">
         Drag and drop CricClubs HTML files to import match data
       </p>
+      <div className="bg-ucla-blue/20 border border-ucla-blue/40 rounded-lg p-4 mb-8">
+        <p className="text-sm text-ucla-gold font-medium">💡 Important: Only upload "Full Scorecard" pages</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Go to CricClubs → Match → Click the <strong>"Full Scorecard"</strong> tab → Save page (Cmd+S or Ctrl+S)
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Other tabs (Info, Ball by Ball, Over by Over, Charts) will not work.
+        </p>
+      </div>
 
       {/* Dropzone */}
       <div
@@ -245,10 +264,23 @@ export default function UploadPage() {
                   {file.matchInfo && (
                     <p className="text-sm text-muted-foreground">
                       {file.matchInfo.teams[0]} vs {file.matchInfo.teams[1]} • {file.matchInfo.date}
+                      {file.matchInfo.battingEntries !== undefined && (
+                        <span className="ml-2 text-green-400">
+                          ({file.matchInfo.battingEntries} batters, {file.matchInfo.bowlingEntries} bowlers)
+                        </span>
+                      )}
                     </p>
                   )}
                   {file.error && (
-                    <p className="text-sm text-red-500">{file.error}</p>
+                    <div className="mt-1 p-2 bg-red-900/30 border border-red-600/50 rounded">
+                      <p className="text-sm font-medium text-red-400">
+                        {file.errorCode === 'WRONG_PAGE_TYPE' && '⚠️ '}
+                        {file.error}
+                      </p>
+                      {file.errorDetails && (
+                        <p className="text-xs text-red-300/80 mt-1">{file.errorDetails}</p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
