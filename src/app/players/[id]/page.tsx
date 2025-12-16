@@ -67,7 +67,6 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
         match:matches(*)
       `)
       .eq('player_id', params.id)
-      .order('match(date)', { ascending: false })
     
     // Get bowling performances
     const { data: bowlingPerformances } = await supabase
@@ -77,7 +76,16 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
         match:matches(*)
       `)
       .eq('player_id', params.id)
-      .order('match(date)', { ascending: false })
+    
+    // Sort performances by match date (most recent first)
+    const sortByMatchDate = (a: any, b: any) => {
+      const dateA = new Date(a.match?.date || 0)
+      const dateB = new Date(b.match?.date || 0)
+      return dateB.getTime() - dateA.getTime()
+    }
+    
+    const sortedBattingPerformances = (battingPerformances || []).sort(sortByMatchDate)
+    const sortedBowlingPerformances = (bowlingPerformances || []).sort(sortByMatchDate)
     
     // Get batting season stats
     const { data: battingSeasonStats } = await supabase
@@ -113,8 +121,8 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
     setPlayer({
       ...playerData,
       aliases: aliasData?.map(a => a.alias) || [],
-      battingPerformances: battingPerformances || [],
-      bowlingPerformances: bowlingPerformances || [],
+      battingPerformances: sortedBattingPerformances,
+      bowlingPerformances: sortedBowlingPerformances,
       battingSeasonStats: battingSeasonStats || [],
       bowlingSeasonStats: bowlingSeasonStats || [],
       fieldingSeasonStats: fieldingSeasonStats || [],
