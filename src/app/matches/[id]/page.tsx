@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { formatStat, formatDate, getInitials, cn } from '@/lib/utils'
 import { EditableScorecard } from '@/components/editable-scorecard'
+import { useAuth } from '@/lib/auth/auth-context'
 
 interface MatchData {
   id: string
@@ -44,6 +45,7 @@ function parseScoreTotal(score: string | null): number | null {
 
 export default function MatchDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const { isAdmin } = useAuth()
   const [match, setMatch] = useState<MatchData | null>(null)
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
@@ -221,17 +223,19 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            {/* Edit Toggle Button */}
-            <button
-              onClick={() => setEditMode(!editMode)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                editMode 
-                  ? 'bg-ucla-gold text-black hover:bg-ucla-gold/90' 
-                  : 'bg-white/20 text-white hover:bg-white/30'
-              }`}
-            >
-              {editMode ? '✓ Done Editing' : '✏️ Edit Scorecard'}
-            </button>
+            {/* Edit Toggle Button - Admin Only */}
+            {isAdmin && (
+              <button
+                onClick={() => setEditMode(!editMode)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  editMode 
+                    ? 'bg-ucla-gold text-black hover:bg-ucla-gold/90' 
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                {editMode ? '✓ Done Editing' : '✏️ Edit Scorecard'}
+              </button>
+            )}
             
             {/* Result Badge */}
             <div className={`px-6 py-3 rounded-lg text-xl font-bold ${

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { AdminGuard } from '@/components/admin-guard'
 
 interface Player {
   id: string
@@ -109,6 +110,7 @@ export default function ManagePlayersPage() {
   }
 
   return (
+    <AdminGuard>
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-white mb-2">
         Manage <span className="text-ucla-gold">Players</span>
@@ -201,6 +203,7 @@ export default function ManagePlayersPage() {
         </div>
       </div>
     </div>
+    </AdminGuard>
   )
 }
 

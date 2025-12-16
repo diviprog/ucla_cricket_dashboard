@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { AdminGuard } from '@/components/admin-guard'
 
 interface ParsedFile {
   id: string // unique ID for each file
@@ -204,6 +205,7 @@ export default function UploadPage() {
   })
 
   return (
+    <AdminGuard>
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-white mb-2">
         Upload <span className="text-ucla-gold">Match Scorecards</span>
@@ -396,6 +398,7 @@ export default function UploadPage() {
         </div>
       )}
     </div>
+    </AdminGuard>
   )
 }
 
