@@ -962,83 +962,21 @@ export async function getBattingDismissalBreakdown(playerId: string): Promise<Di
 }
 
 /**
- * Extract bowler name from dismissal text
- */
-function extractBowlerFromDismissal(dismissalText: string): string | null {
-  if (!dismissalText) return null
-  
-  const text = dismissalText.toLowerCase().trim()
-  
-  // Patterns: "c X b Y", "b Y", "lbw b Y", "st X b Y", "c&b Y"
-  // The bowler is after "b " in most cases
-  
-  // c & b pattern - bowler is same as catcher
-  if (text.includes('c&b') || text.includes('c & b')) {
-    const match = text.match(/c\s*&\s*b\s+(.+)/i)
-    return match ? match[1].trim() : null
-  }
-  
-  // Standard "b BowlerName" pattern
-  const bMatch = text.match(/\bb\s+([a-z][a-z\s]+?)$/i)
-  if (bMatch) {
-    return bMatch[1].trim()
-  }
-  
-  // Just "bowled" or "lbw" without name
-  if (text === 'bowled' || text === 'lbw') {
-    return null
-  }
-  
-  return null
-}
-
-/**
  * Get bowling wicket breakdown for a player
- * This analyzes HOW the bowler takes their wickets
+ * This analyzes HOW the bowler takes their wickets using the bowler_wicket_types table
  */
 export async function getBowlingWicketBreakdown(playerId: string): Promise<DismissalBreakdown[]> {
-  // First get the player's name and aliases
-  const { data: player } = await supabase
-    .from('players')
-    .select('name')
-    .eq('id', playerId)
-    .single()
+  // Get wicket types from the bowler_wicket_types table
+  const { data: wicketTypes, error } = await supabase
+    .from('bowler_wicket_types')
+    .select('dismissal_type, wicket_count')
+    .eq('bowler_player_id', playerId)
   
-  const { data: aliases } = await supabase
-    .from('player_aliases')
-    .select('alias')
-    .eq('player_id', playerId)
-  
-  if (!player) return []
-  
-  const playerNames = [player.name.toLowerCase()]
-  if (aliases) {
-    playerNames.push(...aliases.map(a => a.alias.toLowerCase()))
-  }
-  
-  // Get all batting performances from matches where this player bowled
-  const { data: bowlingMatches } = await supabase
-    .from('bowling_performances')
-    .select('match_id')
-    .eq('player_id', playerId)
-  
-  if (!bowlingMatches || bowlingMatches.length === 0) return []
-  
-  const matchIds = bowlingMatches.map(m => m.match_id)
-  
-  // Get all batting performances from those matches where the batter was dismissed
-  const { data: battingPerformances, error } = await supabase
-    .from('batting_performances')
-    .select('dismissal_text, not_out')
-    .in('match_id', matchIds)
-    .eq('not_out', false)
-  
-  if (error || !battingPerformances) {
-    console.error('Error fetching batting performances for wicket breakdown:', error)
+  if (error || !wicketTypes || wicketTypes.length === 0) {
     return []
   }
   
-  // Count wickets by type for this bowler
+  // Aggregate counts by dismissal type
   const wicketCounts: Record<DismissalType, number> = {
     caught: 0,
     bowled: 0,
@@ -1051,27 +989,11 @@ export async function getBowlingWicketBreakdown(playerId: string): Promise<Dismi
   
   let totalWickets = 0
   
-  for (const perf of battingPerformances) {
-    if (!perf.dismissal_text) continue
-    
-    const bowlerName = extractBowlerFromDismissal(perf.dismissal_text)
-    if (!bowlerName) continue
-    
-    // Check if this bowler matches our player
-    const bowlerLower = bowlerName.toLowerCase()
-    const isSameBowler = playerNames.some(name => 
-      bowlerLower.includes(name) || name.includes(bowlerLower) ||
-      // Check partial name match (at least 3 chars)
-      (bowlerLower.length >= 3 && name.includes(bowlerLower)) ||
-      (name.length >= 3 && bowlerLower.includes(name))
-    )
-    
-    if (isSameBowler) {
-      const type = categorizeDismisal(perf.dismissal_text)
-      if (type && type !== 'run_out') { // Run outs don't count as bowler's wicket
-        wicketCounts[type]++
-        totalWickets++
-      }
+  for (const wt of wicketTypes) {
+    const type = wt.dismissal_type as DismissalType
+    if (wicketCounts[type] !== undefined) {
+      wicketCounts[type] += wt.wicket_count
+      totalWickets += wt.wicket_count
     }
   }
   
@@ -1174,95 +1096,32 @@ export async function getBattingDismissalStatsForLeaderboard(): Promise<Map<stri
 
 /**
  * Get bowling wicket type stats for all players (batch query for leaderboard)
- * This analyzes HOW bowlers take their wickets by matching names in dismissal texts
+ * Uses the bowler_wicket_types table for accurate data
  */
 export async function getBowlingWicketStatsForLeaderboard(): Promise<Map<string, { type: DismissalType; percentage: number; label: string }>> {
-  // Get all players with their names and aliases
-  const { data: players, error: playersError } = await supabase
-    .from('players')
-    .select('id, name')
+  // Get all bowler wicket types
+  const { data: wicketTypes, error } = await supabase
+    .from('bowler_wicket_types')
+    .select('bowler_player_id, dismissal_type, wicket_count')
   
-  const { data: aliases, error: aliasesError } = await supabase
-    .from('player_aliases')
-    .select('player_id, alias')
-  
-  // Get all batting performances with dismissals (excluding not outs and run outs)
-  const { data: battingPerfs, error: battingError } = await supabase
-    .from('batting_performances')
-    .select('dismissal_text')
-    .eq('not_out', false)
-  
-  if (playersError || battingError || !players || !battingPerfs) {
-    console.error('Error fetching data for bowling wicket stats')
+  if (error || !wicketTypes) {
+    console.error('Error fetching bowler wicket types:', error)
     return new Map()
   }
   
-  // Build a map of player names/aliases to player IDs
-  const nameToPlayerId: Map<string, string> = new Map()
-  
-  for (const player of players) {
-    const nameLower = player.name.toLowerCase()
-    nameToPlayerId.set(nameLower, player.id)
-    
-    // Also add partial names (split by space)
-    const nameParts = nameLower.split(' ')
-    if (nameParts.length > 1) {
-      // Add first name if it's unique enough (3+ chars)
-      for (const part of nameParts) {
-        if (part.length >= 3) {
-          // Don't overwrite if already exists (to avoid conflicts)
-          if (!nameToPlayerId.has(part)) {
-            nameToPlayerId.set(part, player.id)
-          }
-        }
-      }
-    }
-  }
-  
-  // Add aliases
-  if (aliases) {
-    for (const alias of aliases) {
-      nameToPlayerId.set(alias.alias.toLowerCase(), alias.player_id)
-    }
-  }
-  
-  // Count wickets by type for each bowler
+  // Aggregate by player and dismissal type
   const bowlerWickets: Map<string, Record<DismissalType, number>> = new Map()
   
-  for (const perf of battingPerfs) {
-    if (!perf.dismissal_text) continue
-    
-    const dismissalType = categorizeDismisal(perf.dismissal_text)
-    if (!dismissalType || dismissalType === 'run_out') continue // Run outs don't count for bowlers
-    
-    const bowlerName = extractBowlerFromDismissal(perf.dismissal_text)
-    if (!bowlerName) continue
-    
-    const bowlerLower = bowlerName.toLowerCase().trim()
-    
-    // Try to match the bowler name to a player
-    let matchedPlayerId: string | undefined
-    
-    // Try exact match first
-    matchedPlayerId = nameToPlayerId.get(bowlerLower)
-    
-    // Try partial match if no exact match
-    if (!matchedPlayerId) {
-      for (const [name, playerId] of nameToPlayerId) {
-        if (bowlerLower.includes(name) || name.includes(bowlerLower)) {
-          matchedPlayerId = playerId
-          break
-        }
-      }
+  for (const wt of wicketTypes) {
+    if (!bowlerWickets.has(wt.bowler_player_id)) {
+      bowlerWickets.set(wt.bowler_player_id, {
+        caught: 0, bowled: 0, lbw: 0, run_out: 0, stumped: 0, hit_wicket: 0, other: 0
+      })
     }
-    
-    if (matchedPlayerId) {
-      if (!bowlerWickets.has(matchedPlayerId)) {
-        bowlerWickets.set(matchedPlayerId, {
-          caught: 0, bowled: 0, lbw: 0, run_out: 0, stumped: 0, hit_wicket: 0, other: 0
-        })
-      }
-      bowlerWickets.get(matchedPlayerId)![dismissalType]++
+    const counts = bowlerWickets.get(wt.bowler_player_id)!
+    const type = wt.dismissal_type as DismissalType
+    if (counts[type] !== undefined) {
+      counts[type] += wt.wicket_count
     }
   }
   

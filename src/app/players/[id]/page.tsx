@@ -305,7 +305,7 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
           {/* Batting Dismissal Breakdown */}
           {player.battingDismissalBreakdown && player.battingDismissalBreakdown.length > 0 && (
             <div className="mt-6">
-              <h3 className="text-lg font-medium text-muted-foreground mb-3">How I Get Out</h3>
+              <h3 className="text-lg font-medium text-muted-foreground mb-3">Dismissal History</h3>
               <div className="bg-card rounded-lg p-4 border border-border">
                 <div className="space-y-3">
                   {player.battingDismissalBreakdown.map((item) => (
@@ -366,7 +366,7 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
           {/* Bowling Wicket Breakdown */}
           {player.bowlingWicketBreakdown && player.bowlingWicketBreakdown.length > 0 && (
             <div className="mt-6">
-              <h3 className="text-lg font-medium text-muted-foreground mb-3">How I Take Wickets</h3>
+              <h3 className="text-lg font-medium text-muted-foreground mb-3">Wickets History</h3>
               <div className="bg-card rounded-lg p-4 border border-border">
                 <div className="space-y-3">
                   {player.bowlingWicketBreakdown.map((item) => (

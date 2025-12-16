@@ -255,6 +255,52 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    // Import bowler wicket types from opponent's innings dismissals
+    // This tracks HOW our bowlers take their wickets (caught, bowled, lbw, stumped)
+    if (opponentInnings && opponentInnings.bowlerWicketEntries) {
+      // Group entries by bowler name and dismissal type
+      const wicketMap = new Map<string, Map<string, number>>()
+      
+      for (const entry of opponentInnings.bowlerWicketEntries) {
+        if (!wicketMap.has(entry.bowlerName)) {
+          wicketMap.set(entry.bowlerName, new Map())
+        }
+        const dismissalMap = wicketMap.get(entry.bowlerName)!
+        dismissalMap.set(entry.dismissalType, (dismissalMap.get(entry.dismissalType) || 0) + 1)
+      }
+      
+      // Insert bowler wicket types
+      for (const [bowlerName, dismissalCounts] of wicketMap) {
+        // Resolve or create bowler
+        let playerId: string
+        const resolved = await resolvePlayerName(bowlerName, match.id)
+        
+        if (resolved) {
+          playerId = resolved.playerId
+        } else {
+          playerId = await createPlayerIfNotExists(bowlerName)
+        }
+        
+        // Insert each dismissal type count
+        for (const [dismissalType, count] of dismissalCounts) {
+          const { error: wicketError } = await supabase
+            .from('bowler_wicket_types')
+            .upsert({
+              match_id: match.id,
+              bowler_player_id: playerId,
+              dismissal_type: dismissalType,
+              wicket_count: count,
+            }, {
+              onConflict: 'match_id,bowler_player_id,dismissal_type',
+            })
+          
+          if (wicketError) {
+            console.error('Error inserting bowler wicket type:', wicketError)
+          }
+        }
+      }
+    }
+    
     // Update season stats for all players
     const uniqueBatting = Array.from(new Set(battingPlayerIds))
     const uniqueBowling = Array.from(new Set(bowlingPlayerIds))

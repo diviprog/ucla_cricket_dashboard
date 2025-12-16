@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio'
-import type { ParsedMatchData, ParsedBattingEntry, ParsedBowlingEntry, ParsedFieldingEntry } from '@/types/models'
+import type { ParsedMatchData, ParsedBattingEntry, ParsedBowlingEntry, ParsedFieldingEntry, ParsedBowlerWicketEntry } from '@/types/models'
 import { createHash } from 'crypto'
 
 // Custom error class for parsing errors
@@ -175,6 +175,9 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
     // Parse fielding from dismissals (catches, run outs, stumpings)
     const fieldingEntries: ParsedFieldingEntry[] = parseFieldingFromDismissals(battingEntries)
     
+    // Parse bowler wickets from dismissals (how bowlers take their wickets)
+    const bowlerWicketEntries: ParsedBowlerWicketEntry[] = parseBowlerWicketsFromDismissals(battingEntries)
+    
     // Parse total from the innings
     const totalText = inningsDiv.find('th:contains("Total")').parent().find('th b').last().text()
     const total = parseInt(totalText) || battingEntries.reduce((sum, e) => sum + e.runs, 0)
@@ -212,6 +215,7 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
       battingEntries,
       bowlingEntries,
       fieldingEntries,
+      bowlerWicketEntries,
       total,
       wickets,
       overs,
@@ -511,6 +515,79 @@ function cleanFielderName(name: string): string {
     .replace(/\s+/g, ' ') // Normalize spaces
     .replace(/^(sub|wk|†)\s*/i, '') // Remove sub/wk markers
     .trim()
+}
+
+/**
+ * Parse bowler wicket types from dismissals
+ * Extract how bowlers take their wickets (caught, bowled, lbw, stumped)
+ */
+function parseBowlerWicketsFromDismissals(battingEntries: ParsedBattingEntry[]): ParsedBowlerWicketEntry[] {
+  const entries: ParsedBowlerWicketEntry[] = []
+  
+  battingEntries.forEach(entry => {
+    if (entry.notOut) return
+    
+    const dismissal = entry.dismissalText.toLowerCase().trim()
+    if (!dismissal || dismissal === 'not out' || dismissal === 'dnb' || dismissal === 'did not bat') return
+    
+    // Determine dismissal type
+    let dismissalType: ParsedBowlerWicketEntry['dismissalType']
+    
+    if (dismissal.includes('run out') || dismissal.includes('runout')) {
+      // Run outs don't count as bowler wickets
+      return
+    } else if (dismissal.startsWith('c ') || dismissal.includes('c & b') || dismissal.includes('c&b')) {
+      dismissalType = 'caught'
+    } else if (dismissal === 'bowled' || dismissal.startsWith('b ')) {
+      dismissalType = 'bowled'
+    } else if (dismissal === 'lbw' || dismissal.startsWith('lbw ')) {
+      dismissalType = 'lbw'
+    } else if (dismissal.startsWith('st ') || dismissal.includes('stumped')) {
+      dismissalType = 'stumped'
+    } else if (dismissal.includes('hit wicket')) {
+      dismissalType = 'hit_wicket'
+    } else {
+      dismissalType = 'other'
+    }
+    
+    // Extract bowler name
+    let bowlerName: string | null = null
+    
+    // c & b pattern - bowler is same as catcher
+    if (dismissal.includes('c&b') || dismissal.includes('c & b')) {
+      const match = dismissal.match(/c\s*&\s*b\s+(.+)/i)
+      if (match) bowlerName = match[1].trim()
+    }
+    // Standard "b BowlerName" pattern at end of string
+    else {
+      const bMatch = dismissal.match(/\bb\s+([a-z][a-z\s.]+?)$/i)
+      if (bMatch) {
+        bowlerName = bMatch[1].trim()
+      }
+    }
+    
+    // Clean up bowler name
+    if (bowlerName) {
+      bowlerName = bowlerName
+        .replace(/[()]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+      
+      // Capitalize first letter of each word
+      bowlerName = bowlerName.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+      
+      if (bowlerName) {
+        entries.push({
+          bowlerName,
+          dismissalType,
+        })
+      }
+    }
+  })
+  
+  return entries
 }
 
 /**

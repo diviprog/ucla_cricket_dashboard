@@ -200,6 +200,11 @@ export interface ParsedFieldingEntry {
   stumpings: number
 }
 
+export interface ParsedBowlerWicketEntry {
+  bowlerName: string
+  dismissalType: 'caught' | 'bowled' | 'lbw' | 'stumped' | 'hit_wicket' | 'other'
+}
+
 export interface ExtrasBreakdown {
   total: number
   wides: number
@@ -220,6 +225,7 @@ export interface ParsedMatchData {
     battingEntries: ParsedBattingEntry[]
     bowlingEntries: ParsedBowlingEntry[]
     fieldingEntries: ParsedFieldingEntry[]
+    bowlerWicketEntries: ParsedBowlerWicketEntry[]
     total: number
     wickets: number
     overs: number

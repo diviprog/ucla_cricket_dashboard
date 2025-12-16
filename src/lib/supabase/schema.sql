@@ -221,6 +221,21 @@ CREATE TABLE IF NOT EXISTS fielding_season_stats (
 CREATE INDEX IF NOT EXISTS idx_fielding_season_stats_player_id ON fielding_season_stats(player_id);
 CREATE INDEX IF NOT EXISTS idx_fielding_season_stats_season_id ON fielding_season_stats(season_id);
 
+-- Bowler wicket types table (tracks how bowlers take their wickets)
+CREATE TABLE IF NOT EXISTS bowler_wicket_types (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  bowler_player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  dismissal_type VARCHAR(20) NOT NULL, -- caught, bowled, lbw, stumped, hit_wicket
+  wicket_count INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(match_id, bowler_player_id, dismissal_type)
+);
+
+-- Index for bowler wicket types
+CREATE INDEX IF NOT EXISTS idx_bowler_wicket_types_bowler_id ON bowler_wicket_types(bowler_player_id);
+CREATE INDEX IF NOT EXISTS idx_bowler_wicket_types_match_id ON bowler_wicket_types(match_id);
+
 -- Insert default seasons
 INSERT INTO seasons (name, start_date, end_date) VALUES
   ('2024-2025', '2024-09-01', '2025-06-30'),
