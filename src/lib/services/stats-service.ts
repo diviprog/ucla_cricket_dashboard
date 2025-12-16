@@ -833,3 +833,465 @@ export async function getOrCreateSeason(seasonName: string): Promise<string> {
   return newSeason.id
 }
 
+// ============================================
+// DISMISSAL ANALYSIS FUNCTIONS
+// ============================================
+
+export type DismissalType = 'caught' | 'bowled' | 'lbw' | 'run_out' | 'stumped' | 'hit_wicket' | 'other'
+
+export interface DismissalBreakdown {
+  type: DismissalType
+  count: number
+  percentage: number
+  label: string
+  emoji: string
+}
+
+/**
+ * Categorize dismissal text into a type
+ */
+export function categorizeDismisal(dismissalText: string | null): DismissalType | null {
+  if (!dismissalText) return null
+  
+  const text = dismissalText.toLowerCase().trim()
+  
+  // Not out - not a dismissal
+  if (text === 'not out' || text === 'dnb' || text === 'did not bat') {
+    return null
+  }
+  
+  // Check for specific dismissal types
+  if (text.startsWith('c ') || text.startsWith('c&b') || text.includes('c & b') || text.match(/^c\s+/)) {
+    return 'caught'
+  }
+  if (text === 'bowled' || text.startsWith('b ')) {
+    return 'bowled'
+  }
+  if (text === 'lbw' || text.startsWith('lbw ')) {
+    return 'lbw'
+  }
+  if (text.includes('run out') || text.includes('runout')) {
+    return 'run_out'
+  }
+  if (text.startsWith('st ') || text.includes('stumped')) {
+    return 'stumped'
+  }
+  if (text.includes('hit wicket')) {
+    return 'hit_wicket'
+  }
+  
+  return 'other'
+}
+
+/**
+ * Get display properties for dismissal type
+ */
+function getDismissalDisplay(type: DismissalType): { label: string; emoji: string } {
+  switch (type) {
+    case 'caught':
+      return { label: 'Caught', emoji: '🧤' }
+    case 'bowled':
+      return { label: 'Bowled', emoji: '📍' }
+    case 'lbw':
+      return { label: 'LBW', emoji: '🦵' }
+    case 'run_out':
+      return { label: 'Run Out', emoji: '🏃' }
+    case 'stumped':
+      return { label: 'Stumped', emoji: '🎯' }
+    case 'hit_wicket':
+      return { label: 'Hit Wicket', emoji: '💥' }
+    default:
+      return { label: 'Other', emoji: '❓' }
+  }
+}
+
+/**
+ * Get batting dismissal breakdown for a player
+ */
+export async function getBattingDismissalBreakdown(playerId: string): Promise<DismissalBreakdown[]> {
+  const { data: performances, error } = await supabase
+    .from('batting_performances')
+    .select('dismissal_text, not_out')
+    .eq('player_id', playerId)
+  
+  if (error || !performances) {
+    console.error('Error fetching batting performances for dismissal breakdown:', error)
+    return []
+  }
+  
+  // Count dismissals by type
+  const dismissalCounts: Record<DismissalType, number> = {
+    caught: 0,
+    bowled: 0,
+    lbw: 0,
+    run_out: 0,
+    stumped: 0,
+    hit_wicket: 0,
+    other: 0,
+  }
+  
+  let totalDismissals = 0
+  
+  for (const perf of performances) {
+    if (perf.not_out) continue
+    
+    const type = categorizeDismisal(perf.dismissal_text)
+    if (type) {
+      dismissalCounts[type]++
+      totalDismissals++
+    }
+  }
+  
+  // Convert to breakdown array
+  const breakdown: DismissalBreakdown[] = []
+  
+  for (const [type, count] of Object.entries(dismissalCounts)) {
+    if (count > 0) {
+      const display = getDismissalDisplay(type as DismissalType)
+      breakdown.push({
+        type: type as DismissalType,
+        count,
+        percentage: totalDismissals > 0 ? (count / totalDismissals) * 100 : 0,
+        ...display,
+      })
+    }
+  }
+  
+  // Sort by count descending
+  return breakdown.sort((a, b) => b.count - a.count)
+}
+
+/**
+ * Extract bowler name from dismissal text
+ */
+function extractBowlerFromDismissal(dismissalText: string): string | null {
+  if (!dismissalText) return null
+  
+  const text = dismissalText.toLowerCase().trim()
+  
+  // Patterns: "c X b Y", "b Y", "lbw b Y", "st X b Y", "c&b Y"
+  // The bowler is after "b " in most cases
+  
+  // c & b pattern - bowler is same as catcher
+  if (text.includes('c&b') || text.includes('c & b')) {
+    const match = text.match(/c\s*&\s*b\s+(.+)/i)
+    return match ? match[1].trim() : null
+  }
+  
+  // Standard "b BowlerName" pattern
+  const bMatch = text.match(/\bb\s+([a-z][a-z\s]+?)$/i)
+  if (bMatch) {
+    return bMatch[1].trim()
+  }
+  
+  // Just "bowled" or "lbw" without name
+  if (text === 'bowled' || text === 'lbw') {
+    return null
+  }
+  
+  return null
+}
+
+/**
+ * Get bowling wicket breakdown for a player
+ * This analyzes HOW the bowler takes their wickets
+ */
+export async function getBowlingWicketBreakdown(playerId: string): Promise<DismissalBreakdown[]> {
+  // First get the player's name and aliases
+  const { data: player } = await supabase
+    .from('players')
+    .select('name')
+    .eq('id', playerId)
+    .single()
+  
+  const { data: aliases } = await supabase
+    .from('player_aliases')
+    .select('alias')
+    .eq('player_id', playerId)
+  
+  if (!player) return []
+  
+  const playerNames = [player.name.toLowerCase()]
+  if (aliases) {
+    playerNames.push(...aliases.map(a => a.alias.toLowerCase()))
+  }
+  
+  // Get all batting performances from matches where this player bowled
+  const { data: bowlingMatches } = await supabase
+    .from('bowling_performances')
+    .select('match_id')
+    .eq('player_id', playerId)
+  
+  if (!bowlingMatches || bowlingMatches.length === 0) return []
+  
+  const matchIds = bowlingMatches.map(m => m.match_id)
+  
+  // Get all batting performances from those matches where the batter was dismissed
+  const { data: battingPerformances, error } = await supabase
+    .from('batting_performances')
+    .select('dismissal_text, not_out')
+    .in('match_id', matchIds)
+    .eq('not_out', false)
+  
+  if (error || !battingPerformances) {
+    console.error('Error fetching batting performances for wicket breakdown:', error)
+    return []
+  }
+  
+  // Count wickets by type for this bowler
+  const wicketCounts: Record<DismissalType, number> = {
+    caught: 0,
+    bowled: 0,
+    lbw: 0,
+    run_out: 0,
+    stumped: 0,
+    hit_wicket: 0,
+    other: 0,
+  }
+  
+  let totalWickets = 0
+  
+  for (const perf of battingPerformances) {
+    if (!perf.dismissal_text) continue
+    
+    const bowlerName = extractBowlerFromDismissal(perf.dismissal_text)
+    if (!bowlerName) continue
+    
+    // Check if this bowler matches our player
+    const bowlerLower = bowlerName.toLowerCase()
+    const isSameBowler = playerNames.some(name => 
+      bowlerLower.includes(name) || name.includes(bowlerLower) ||
+      // Check partial name match (at least 3 chars)
+      (bowlerLower.length >= 3 && name.includes(bowlerLower)) ||
+      (name.length >= 3 && bowlerLower.includes(name))
+    )
+    
+    if (isSameBowler) {
+      const type = categorizeDismisal(perf.dismissal_text)
+      if (type && type !== 'run_out') { // Run outs don't count as bowler's wicket
+        wicketCounts[type]++
+        totalWickets++
+      }
+    }
+  }
+  
+  // Convert to breakdown array
+  const breakdown: DismissalBreakdown[] = []
+  
+  for (const [type, count] of Object.entries(wicketCounts)) {
+    if (count > 0) {
+      const display = getDismissalDisplay(type as DismissalType)
+      breakdown.push({
+        type: type as DismissalType,
+        count,
+        percentage: totalWickets > 0 ? (count / totalWickets) * 100 : 0,
+        ...display,
+      })
+    }
+  }
+  
+  // Sort by count descending
+  return breakdown.sort((a, b) => b.count - a.count)
+}
+
+/**
+ * Get most common dismissal type for a batter (for leaderboards)
+ */
+export async function getMostCommonDismissal(playerId: string): Promise<{ type: DismissalType; percentage: number } | null> {
+  const breakdown = await getBattingDismissalBreakdown(playerId)
+  if (breakdown.length === 0) return null
+  return { type: breakdown[0].type, percentage: breakdown[0].percentage }
+}
+
+/**
+ * Get most common wicket type for a bowler (for leaderboards)
+ */
+export async function getMostCommonWicketType(playerId: string): Promise<{ type: DismissalType; percentage: number } | null> {
+  const breakdown = await getBowlingWicketBreakdown(playerId)
+  if (breakdown.length === 0) return null
+  return { type: breakdown[0].type, percentage: breakdown[0].percentage }
+}
+
+/**
+ * Get batting dismissal stats for all players (batch query for leaderboard)
+ */
+export async function getBattingDismissalStatsForLeaderboard(): Promise<Map<string, { type: DismissalType; percentage: number; label: string }>> {
+  // Get all batting performances with dismissals
+  const { data: performances, error } = await supabase
+    .from('batting_performances')
+    .select('player_id, dismissal_text, not_out')
+    .eq('not_out', false)
+  
+  if (error || !performances) {
+    console.error('Error fetching dismissal stats:', error)
+    return new Map()
+  }
+  
+  // Group by player and count dismissal types
+  const playerDismissals: Map<string, Record<DismissalType, number>> = new Map()
+  
+  for (const perf of performances) {
+    const type = categorizeDismisal(perf.dismissal_text)
+    if (!type) continue
+    
+    if (!playerDismissals.has(perf.player_id)) {
+      playerDismissals.set(perf.player_id, {
+        caught: 0, bowled: 0, lbw: 0, run_out: 0, stumped: 0, hit_wicket: 0, other: 0
+      })
+    }
+    
+    playerDismissals.get(perf.player_id)![type]++
+  }
+  
+  // Find most common dismissal for each player
+  const result: Map<string, { type: DismissalType; percentage: number; label: string }> = new Map()
+  
+  for (const [playerId, counts] of playerDismissals) {
+    let maxType: DismissalType = 'caught'
+    let maxCount = 0
+    let total = 0
+    
+    for (const [type, count] of Object.entries(counts)) {
+      total += count
+      if (count > maxCount) {
+        maxCount = count
+        maxType = type as DismissalType
+      }
+    }
+    
+    if (maxCount > 0) {
+      const display = getDismissalDisplay(maxType)
+      result.set(playerId, {
+        type: maxType,
+        percentage: (maxCount / total) * 100,
+        label: display.label,
+      })
+    }
+  }
+  
+  return result
+}
+
+/**
+ * Get bowling wicket type stats for all players (batch query for leaderboard)
+ * This analyzes HOW bowlers take their wickets by matching names in dismissal texts
+ */
+export async function getBowlingWicketStatsForLeaderboard(): Promise<Map<string, { type: DismissalType; percentage: number; label: string }>> {
+  // Get all players with their names and aliases
+  const { data: players, error: playersError } = await supabase
+    .from('players')
+    .select('id, name')
+  
+  const { data: aliases, error: aliasesError } = await supabase
+    .from('player_aliases')
+    .select('player_id, alias')
+  
+  // Get all batting performances with dismissals (excluding not outs and run outs)
+  const { data: battingPerfs, error: battingError } = await supabase
+    .from('batting_performances')
+    .select('dismissal_text')
+    .eq('not_out', false)
+  
+  if (playersError || battingError || !players || !battingPerfs) {
+    console.error('Error fetching data for bowling wicket stats')
+    return new Map()
+  }
+  
+  // Build a map of player names/aliases to player IDs
+  const nameToPlayerId: Map<string, string> = new Map()
+  
+  for (const player of players) {
+    const nameLower = player.name.toLowerCase()
+    nameToPlayerId.set(nameLower, player.id)
+    
+    // Also add partial names (split by space)
+    const nameParts = nameLower.split(' ')
+    if (nameParts.length > 1) {
+      // Add first name if it's unique enough (3+ chars)
+      for (const part of nameParts) {
+        if (part.length >= 3) {
+          // Don't overwrite if already exists (to avoid conflicts)
+          if (!nameToPlayerId.has(part)) {
+            nameToPlayerId.set(part, player.id)
+          }
+        }
+      }
+    }
+  }
+  
+  // Add aliases
+  if (aliases) {
+    for (const alias of aliases) {
+      nameToPlayerId.set(alias.alias.toLowerCase(), alias.player_id)
+    }
+  }
+  
+  // Count wickets by type for each bowler
+  const bowlerWickets: Map<string, Record<DismissalType, number>> = new Map()
+  
+  for (const perf of battingPerfs) {
+    if (!perf.dismissal_text) continue
+    
+    const dismissalType = categorizeDismisal(perf.dismissal_text)
+    if (!dismissalType || dismissalType === 'run_out') continue // Run outs don't count for bowlers
+    
+    const bowlerName = extractBowlerFromDismissal(perf.dismissal_text)
+    if (!bowlerName) continue
+    
+    const bowlerLower = bowlerName.toLowerCase().trim()
+    
+    // Try to match the bowler name to a player
+    let matchedPlayerId: string | undefined
+    
+    // Try exact match first
+    matchedPlayerId = nameToPlayerId.get(bowlerLower)
+    
+    // Try partial match if no exact match
+    if (!matchedPlayerId) {
+      for (const [name, playerId] of nameToPlayerId) {
+        if (bowlerLower.includes(name) || name.includes(bowlerLower)) {
+          matchedPlayerId = playerId
+          break
+        }
+      }
+    }
+    
+    if (matchedPlayerId) {
+      if (!bowlerWickets.has(matchedPlayerId)) {
+        bowlerWickets.set(matchedPlayerId, {
+          caught: 0, bowled: 0, lbw: 0, run_out: 0, stumped: 0, hit_wicket: 0, other: 0
+        })
+      }
+      bowlerWickets.get(matchedPlayerId)![dismissalType]++
+    }
+  }
+  
+  // Find most common wicket type for each bowler
+  const result: Map<string, { type: DismissalType; percentage: number; label: string }> = new Map()
+  
+  for (const [playerId, counts] of bowlerWickets) {
+    let maxType: DismissalType = 'caught'
+    let maxCount = 0
+    let total = 0
+    
+    for (const [type, count] of Object.entries(counts)) {
+      total += count
+      if (count > maxCount) {
+        maxCount = count
+        maxType = type as DismissalType
+      }
+    }
+    
+    if (maxCount > 0) {
+      const display = getDismissalDisplay(maxType)
+      result.set(playerId, {
+        type: maxType,
+        percentage: (maxCount / total) * 100,
+        label: display.label,
+      })
+    }
+  }
+  
+  return result
+}
+

@@ -5,6 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { formatScore, formatStat, formatDate, getInitials } from '@/lib/utils'
+import { 
+  getBattingDismissalBreakdown, 
+  getBowlingWicketBreakdown,
+  type DismissalBreakdown 
+} from '@/lib/services/stats-service'
 
 interface PlayerData {
   id: string
@@ -17,6 +22,8 @@ interface PlayerData {
   fieldingSeasonStats: any[]
   battingPerformances: any[]
   bowlingPerformances: any[]
+  battingDismissalBreakdown?: DismissalBreakdown[]
+  bowlingWicketBreakdown?: DismissalBreakdown[]
 }
 
 export default function PlayerProfilePage({ params }: { params: { id: string } }) {
@@ -99,6 +106,10 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
       `)
       .eq('player_id', params.id)
 
+    // Get dismissal breakdowns
+    const battingDismissalBreakdown = await getBattingDismissalBreakdown(params.id)
+    const bowlingWicketBreakdown = await getBowlingWicketBreakdown(params.id)
+
     setPlayer({
       ...playerData,
       aliases: aliasData?.map(a => a.alias) || [],
@@ -107,6 +118,8 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
       battingSeasonStats: battingSeasonStats || [],
       bowlingSeasonStats: bowlingSeasonStats || [],
       fieldingSeasonStats: fieldingSeasonStats || [],
+      battingDismissalBreakdown,
+      bowlingWicketBreakdown,
     })
     setLoading(false)
   }
@@ -288,6 +301,32 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
               <p className="text-2xl font-bold text-white">{formatStat(currentBattingStats.boundary_percentage, 1)}%</p>
             </div>
           </div>
+          
+          {/* Batting Dismissal Breakdown */}
+          {player.battingDismissalBreakdown && player.battingDismissalBreakdown.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-muted-foreground mb-3">How I Get Out</h3>
+              <div className="bg-card rounded-lg p-4 border border-border">
+                <div className="space-y-3">
+                  {player.battingDismissalBreakdown.map((item) => (
+                    <div key={item.type} className="flex items-center gap-3">
+                      <span className="text-xl w-8">{item.emoji}</span>
+                      <span className="text-white font-medium w-24">{item.label}</span>
+                      <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-ucla-blue to-ucla-gold rounded-full transition-all duration-500"
+                          style={{ width: `${item.percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-muted-foreground text-sm w-20 text-right">
+                        {item.count} ({item.percentage.toFixed(0)}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -323,6 +362,32 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
               <p className="text-2xl font-bold text-white">{formatStat(currentBowlingStats.dot_percentage, 1)}%</p>
             </div>
           </div>
+          
+          {/* Bowling Wicket Breakdown */}
+          {player.bowlingWicketBreakdown && player.bowlingWicketBreakdown.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-muted-foreground mb-3">How I Take Wickets</h3>
+              <div className="bg-card rounded-lg p-4 border border-border">
+                <div className="space-y-3">
+                  {player.bowlingWicketBreakdown.map((item) => (
+                    <div key={item.type} className="flex items-center gap-3">
+                      <span className="text-xl w-8">{item.emoji}</span>
+                      <span className="text-white font-medium w-24">{item.label}</span>
+                      <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-green-600 to-green-400 rounded-full transition-all duration-500"
+                          style={{ width: `${item.percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-muted-foreground text-sm w-20 text-right">
+                        {item.count} ({item.percentage.toFixed(0)}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,11 +1,14 @@
 import Link from 'next/link'
-import { getSeasonLeaderboard } from '@/lib/services/stats-service'
+import { getSeasonLeaderboard, getBattingDismissalStatsForLeaderboard } from '@/lib/services/stats-service'
 import { formatStat, getInitials } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
 export default async function PlayersPage() {
-  const leaderboard = await getSeasonLeaderboard()
+  const [leaderboard, dismissalStats] = await Promise.all([
+    getSeasonLeaderboard(),
+    getBattingDismissalStatsForLeaderboard()
+  ])
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -56,37 +59,52 @@ export default async function PlayersPage() {
                   <th className="px-4 py-3 text-center font-semibold">4s</th>
                   <th className="px-4 py-3 text-center font-semibold">6s</th>
                   <th className="px-4 py-3 text-center font-semibold">Bdry %</th>
-                  <th className="px-4 py-3 text-center font-semibold">B/LBW %</th>
+                  <th className="px-4 py-3 text-center font-semibold" title="Most common dismissal type">Main Out</th>
                 </tr>
               </thead>
               <tbody>
-                {leaderboard.map((stat, index) => (
-                  <tr 
-                    key={stat.id}
-                    className="border-b border-border hover:bg-muted/50 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-muted-foreground">{index + 1}</td>
-                    <td className="px-4 py-3">
-                      <Link 
-                        href={`/players/${stat.player_id}`}
-                        className="flex items-center gap-3 hover:text-ucla-gold transition-colors"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-ucla-blue flex items-center justify-center text-white font-bold">
-                          {getInitials(stat.player?.name || 'UN')}
-                        </div>
-                        <span className="font-medium">{stat.player?.name}</span>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-center">{stat.matches_played}</td>
-                    <td className="px-4 py-3 text-center font-bold text-ucla-gold">{stat.total_runs}</td>
-                    <td className="px-4 py-3 text-center">{formatStat(stat.average, 1)}</td>
-                    <td className="px-4 py-3 text-center">{formatStat(stat.strike_rate, 1)}</td>
-                    <td className="px-4 py-3 text-center">{stat.fours}</td>
-                    <td className="px-4 py-3 text-center">{stat.sixes}</td>
-                    <td className="px-4 py-3 text-center">{formatStat(stat.boundary_percentage, 1)}%</td>
-                    <td className="px-4 py-3 text-center">{formatStat(stat.bowled_lbw_percentage, 1)}%</td>
-                  </tr>
-                ))}
+                {leaderboard.map((stat, index) => {
+                  const dismissalInfo = dismissalStats.get(stat.player_id)
+                  return (
+                    <tr 
+                      key={stat.id}
+                      className="border-b border-border hover:bg-muted/50 transition-colors"
+                    >
+                      <td className="px-4 py-3 text-muted-foreground">{index + 1}</td>
+                      <td className="px-4 py-3">
+                        <Link 
+                          href={`/players/${stat.player_id}`}
+                          className="flex items-center gap-3 hover:text-ucla-gold transition-colors"
+                        >
+                          <div className="w-10 h-10 rounded-full bg-ucla-blue flex items-center justify-center text-white font-bold">
+                            {getInitials(stat.player?.name || 'UN')}
+                          </div>
+                          <span className="font-medium">{stat.player?.name}</span>
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-center">{stat.matches_played}</td>
+                      <td className="px-4 py-3 text-center font-bold text-ucla-gold">{stat.total_runs}</td>
+                      <td className="px-4 py-3 text-center">{formatStat(stat.average, 1)}</td>
+                      <td className="px-4 py-3 text-center">{formatStat(stat.strike_rate, 1)}</td>
+                      <td className="px-4 py-3 text-center">{stat.fours}</td>
+                      <td className="px-4 py-3 text-center">{stat.sixes}</td>
+                      <td className="px-4 py-3 text-center">{formatStat(stat.boundary_percentage, 1)}%</td>
+                      <td className="px-4 py-3 text-center">
+                        {dismissalInfo ? (
+                          <span 
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-muted rounded-full text-xs"
+                            title={`${dismissalInfo.label} (${dismissalInfo.percentage.toFixed(0)}%)`}
+                          >
+                            <span>{dismissalInfo.label}</span>
+                            <span className="text-muted-foreground">({dismissalInfo.percentage.toFixed(0)}%)</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

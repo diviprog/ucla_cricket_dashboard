@@ -368,7 +368,7 @@ export default async function Dashboard() {
             <Link
               href="/matches"
               className="bg-card hover:bg-card/80 border border-border rounded-lg p-4 text-center transition-colors"
-            >
+          >
               <div className="text-2xl mb-1">🗓️</div>
               <h3 className="text-sm font-semibold">Match History</h3>
               <p className="text-xs text-muted-foreground">View all scorecards</p>

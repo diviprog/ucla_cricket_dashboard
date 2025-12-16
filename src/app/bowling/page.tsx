@@ -35,6 +35,14 @@ interface Season {
   name: string
 }
 
+interface WicketTypeStats {
+  [playerId: string]: {
+    type: string
+    percentage: number
+    label: string
+  }
+}
+
 type SortKey = 'wickets' | 'average' | 'economy' | 'strikeRate' | 'overs' | 'dots'
 
 export default function BowlingPage() {
@@ -43,9 +51,11 @@ export default function BowlingPage() {
   const [selectedSeason, setSelectedSeason] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortKey>('wickets')
   const [loading, setLoading] = useState(true)
+  const [wicketTypeStats, setWicketTypeStats] = useState<WicketTypeStats>({})
 
   useEffect(() => {
     loadSeasons()
+    loadWicketTypes()
   }, [])
 
   useEffect(() => {
@@ -63,6 +73,18 @@ export default function BowlingPage() {
     if (data && data.length > 0) {
       setSeasons(data)
       setSelectedSeason(data[0].id)
+    }
+  }
+
+  async function loadWicketTypes() {
+    try {
+      const response = await fetch('/api/stats/wicket-types')
+      const result = await response.json()
+      if (result.success) {
+        setWicketTypeStats(result.data)
+      }
+    } catch (error) {
+      console.error('Error loading wicket types:', error)
     }
   }
 
@@ -197,84 +219,93 @@ export default function BowlingPage() {
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">Avg</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">SR</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">Econ</th>
+                <th className="text-center py-3 px-4 text-muted-foreground font-medium" title="Most common wicket type">Main Wkt</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">Dots</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">Dot%</th>
-                <th className="text-center py-3 px-4 text-muted-foreground font-medium">Wd</th>
-                <th className="text-center py-3 px-4 text-muted-foreground font-medium">NB</th>
               </tr>
             </thead>
             <tbody>
-              {stats.map((row, index) => (
-                <tr 
-                  key={row.id}
-                  className={cn(
-                    'border-b border-border/50 hover:bg-ucla-blue/10 transition-colors',
-                    index < 3 && 'bg-ucla-gold/5'
-                  )}
-                >
-                  <td className="py-3 px-4">
-                    <span className={cn(
-                      'font-medium',
-                      index === 0 && 'text-ucla-gold',
-                      index === 1 && 'text-gray-300',
-                      index === 2 && 'text-amber-600',
+              {stats.map((row, index) => {
+                const wicketInfo = wicketTypeStats[row.player_id]
+                return (
+                  <tr 
+                    key={row.id}
+                    className={cn(
+                      'border-b border-border/50 hover:bg-ucla-blue/10 transition-colors',
+                      index < 3 && 'bg-ucla-gold/5'
+                    )}
+                  >
+                    <td className="py-3 px-4">
+                      <span className={cn(
+                        'font-medium',
+                        index === 0 && 'text-ucla-gold',
+                        index === 1 && 'text-gray-300',
+                        index === 2 && 'text-amber-600',
+                      )}>
+                        {index + 1}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <a 
+                        href={`/players/${row.player.id}`}
+                        className="text-white hover:text-ucla-gold transition-colors font-medium"
+                      >
+                        {row.player.name}
+                      </a>
+                    </td>
+                    <td className="py-3 px-4 text-center text-muted-foreground">
+                      {row.matches_bowled}
+                    </td>
+                    <td className="py-3 px-4 text-center text-white">
+                      {row.total_overs.toFixed(1)}
+                    </td>
+                    <td className="py-3 px-4 text-center text-muted-foreground">
+                      {row.total_runs}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="text-ucla-gold font-bold text-lg">
+                        {row.total_wickets}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center text-white">
+                      {formatAverage(row.average, row.total_wickets)}
+                    </td>
+                    <td className="py-3 px-4 text-center text-muted-foreground">
+                      {formatStrikeRate(row.strike_rate, row.total_wickets)}
+                    </td>
+                    <td className={cn(
+                      'py-3 px-4 text-center font-medium',
+                      row.economy <= 6 ? 'text-green-400' :
+                      row.economy <= 8 ? 'text-white' :
+                      'text-red-400'
                     )}>
-                      {index + 1}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <a 
-                      href={`/players/${row.player.id}`}
-                      className="text-white hover:text-ucla-gold transition-colors font-medium"
-                    >
-                      {row.player.name}
-                    </a>
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {row.matches_bowled}
-                  </td>
-                  <td className="py-3 px-4 text-center text-white">
-                    {row.total_overs.toFixed(1)}
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {row.total_runs}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="text-ucla-gold font-bold text-lg">
-                      {row.total_wickets}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-center text-white">
-                    {formatAverage(row.average, row.total_wickets)}
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {formatStrikeRate(row.strike_rate, row.total_wickets)}
-                  </td>
-                  <td className={cn(
-                    'py-3 px-4 text-center font-medium',
-                    row.economy <= 6 ? 'text-green-400' :
-                    row.economy <= 8 ? 'text-white' :
-                    'text-red-400'
-                  )}>
-                    {row.economy.toFixed(2)}
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {row.total_dots}
-                  </td>
-                  <td className={cn(
-                    'py-3 px-4 text-center',
-                    row.dot_percentage >= 50 ? 'text-green-400' : 'text-muted-foreground'
-                  )}>
-                    {row.dot_percentage.toFixed(1)}%
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {row.total_wides}
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {row.total_no_balls}
-                  </td>
-                </tr>
-              ))}
+                      {row.economy.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {wicketInfo ? (
+                        <span 
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-muted rounded-full text-xs"
+                          title={`${wicketInfo.label} (${wicketInfo.percentage.toFixed(0)}%)`}
+                        >
+                          <span>{wicketInfo.label}</span>
+                          <span className="text-muted-foreground">({wicketInfo.percentage.toFixed(0)}%)</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center text-muted-foreground">
+                      {row.total_dots}
+                    </td>
+                    <td className={cn(
+                      'py-3 px-4 text-center',
+                      row.dot_percentage >= 50 ? 'text-green-400' : 'text-muted-foreground'
+                    )}>
+                      {row.dot_percentage.toFixed(1)}%
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -285,8 +316,8 @@ export default function BowlingPage() {
         <p className="mb-2"><strong>Legend:</strong></p>
         <p>M = Matches Bowled, O = Overs, R = Runs, W = Wickets</p>
         <p>Avg = Average (runs per wicket), SR = Strike Rate (balls per wicket)</p>
-        <p>Econ = Economy (runs per over), Dots = Dot Balls, Dot% = Dot Ball Percentage</p>
-        <p>Wd = Wides, NB = No Balls</p>
+        <p>Econ = Economy (runs per over), Main Wkt = Most common way they take wickets</p>
+        <p>Dots = Dot Balls, Dot% = Dot Ball Percentage</p>
       </div>
     </div>
   )
