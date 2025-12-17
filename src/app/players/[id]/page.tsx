@@ -10,6 +10,7 @@ import {
   getBowlingWicketBreakdown,
   type DismissalBreakdown 
 } from '@/lib/services/stats-service'
+import { useAuth } from '@/lib/auth/auth-context'
 
 interface PlayerData {
   id: string
@@ -28,11 +29,14 @@ interface PlayerData {
 
 export default function PlayerProfilePage({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const { isAdmin } = useAuth()
   const [player, setPlayer] = useState<PlayerData | null>(null)
   const [loading, setLoading] = useState(true)
   const [newAlias, setNewAlias] = useState('')
   const [addingAlias, setAddingAlias] = useState(false)
-  const [editingAliases, setEditingAliases] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [savingName, setSavingName] = useState(false)
 
   useEffect(() => {
     loadPlayer()
@@ -183,6 +187,40 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
     }
   }
 
+  async function updatePlayerName() {
+    if (!player || !newName.trim()) return
+    
+    setSavingName(true)
+    try {
+      const response = await fetch('/api/players/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: player.id,
+          name: newName.trim(),
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setEditingName(false)
+        loadPlayer()
+      } else {
+        alert(data.error || 'Failed to update name')
+      }
+    } catch (err) {
+      alert('Failed to update name')
+    } finally {
+      setSavingName(false)
+    }
+  }
+
+  function startEditingName() {
+    setNewName(player?.name || '')
+    setEditingName(true)
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -216,48 +254,87 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
           {getInitials(player.name)}
         </div>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-white">{player.name}</h1>
-          
-          {/* Aliases Section */}
-          <div className="mt-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {player.aliases.length > 0 && (
-                <span className="text-muted-foreground text-sm">Also known as:</span>
-              )}
-              {player.aliases.map((alias) => (
-                <span 
-                  key={alias} 
-                  className="inline-flex items-center gap-1 bg-muted px-2 py-1 rounded text-sm"
-                >
-                  {alias}
-                  {editingAliases && (
-                    <button
-                      onClick={() => removeAlias(alias)}
-                      className="text-red-400 hover:text-red-300 ml-1"
-                      title="Remove alias"
-                    >
-                      ×
-                    </button>
-                  )}
-                </span>
-              ))}
+          {/* Player Name - Editable for Admins */}
+          {editingName ? (
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="text-3xl font-bold bg-background border border-ucla-gold rounded px-3 py-1 text-white w-full max-w-md"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') updatePlayerName()
+                  if (e.key === 'Escape') setEditingName(false)
+                }}
+                autoFocus
+              />
               <button
-                onClick={() => setEditingAliases(!editingAliases)}
-                className="text-xs text-ucla-blue hover:text-ucla-gold"
+                onClick={updatePlayerName}
+                disabled={savingName || !newName.trim()}
+                className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
-                {editingAliases ? 'Done' : '+ Manage Aliases'}
+                {savingName ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setEditingName(false)}
+                className="px-4 py-2 bg-muted text-white rounded text-sm font-medium hover:bg-muted/80"
+              >
+                Cancel
               </button>
             </div>
-            
-            {/* Add Alias Form */}
-            {editingAliases && (
-              <div className="mt-3 flex items-center gap-2">
+          ) : (
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-white">{player.name}</h1>
+              {isAdmin && (
+                <button
+                  onClick={startEditingName}
+                  className="text-sm text-ucla-blue hover:text-ucla-gold"
+                  title="Edit player name"
+                >
+                  ✏️ Edit
+                </button>
+              )}
+            </div>
+          )}
+          
+          {/* Aliases Section - Only for Admins */}
+          {isAdmin && (
+            <div className="mt-3 bg-card rounded-lg p-4 border border-border">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-sm font-medium text-white">Aliases</span>
+                <span className="text-xs text-muted-foreground">(alternative names that map to this player)</span>
+              </div>
+              
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                {player.aliases.length > 0 ? (
+                  player.aliases.map((alias) => (
+                    <span 
+                      key={alias} 
+                      className="inline-flex items-center gap-1 bg-muted px-3 py-1.5 rounded text-sm group"
+                    >
+                      {alias}
+                      <button
+                        onClick={() => removeAlias(alias)}
+                        className="text-red-400 hover:text-red-300 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove alias"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-muted-foreground italic">No aliases</span>
+                )}
+              </div>
+              
+              {/* Add Alias Form */}
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={newAlias}
                   onChange={(e) => setNewAlias(e.target.value)}
                   placeholder="Add new alias..."
-                  className="px-3 py-1.5 bg-background border border-border rounded text-sm text-white placeholder:text-muted-foreground w-48"
+                  className="px-3 py-1.5 bg-background border border-border rounded text-sm text-white placeholder:text-muted-foreground flex-1 max-w-xs"
                   onKeyDown={(e) => e.key === 'Enter' && addAlias()}
                 />
                 <button
@@ -265,11 +342,26 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
                   disabled={addingAlias || !newAlias.trim()}
                   className="px-3 py-1.5 bg-ucla-blue text-white rounded text-sm hover:bg-ucla-blue/90 disabled:opacity-50"
                 >
-                  {addingAlias ? 'Adding...' : 'Add'}
+                  {addingAlias ? 'Adding...' : '+ Add Alias'}
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          
+          {/* Non-admin view of aliases */}
+          {!isAdmin && player.aliases.length > 0 && (
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="text-muted-foreground text-sm">Also known as:</span>
+              {player.aliases.map((alias) => (
+                <span 
+                  key={alias} 
+                  className="bg-muted px-2 py-1 rounded text-sm"
+                >
+                  {alias}
+                </span>
+              ))}
+            </div>
+          )}
           
           {player.year && player.major && (
             <p className="text-muted-foreground mt-2">
