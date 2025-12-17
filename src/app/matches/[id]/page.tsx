@@ -44,9 +44,6 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
   const [match, setMatch] = useState<MatchData | null>(null)
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
-  
-  // Metadata editing state
-  const [editingMetadata, setEditingMetadata] = useState(false)
   const [metadata, setMetadata] = useState({
     competition_name: '',
     match_type: 'league',
@@ -139,7 +136,6 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
       const result = await response.json()
       if (result.success) {
         loadMatchDetails()
-        setEditingMetadata(false)
       } else {
         alert(result.error)
       }
@@ -273,35 +269,23 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
       {editMode ? (
         <>
           {/* Metadata Editor */}
-          <div className="bg-card rounded-lg border border-border p-6 mb-8">
+          <div className="bg-card rounded-lg border border-ucla-gold/30 p-6 mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Match Details</h3>
-              {!editingMetadata ? (
-                <button
-                  onClick={() => setEditingMetadata(true)}
-                  className="text-sm text-ucla-blue hover:text-ucla-gold"
-                >
-                  ✏️ Edit Details
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={saveMetadata}
-                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingMetadata(false)}
-                    className="px-3 py-1 bg-muted text-white rounded text-sm hover:bg-muted/80"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>📋</span> Match Details
+                <span className="text-xs font-normal text-ucla-gold bg-ucla-gold/20 px-2 py-1 rounded">
+                  Click fields to edit
+                </span>
+              </h3>
+              <button
+                onClick={saveMetadata}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                💾 Save Changes
+              </button>
             </div>
             
-            {editingMetadata ? (
+            {true ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">
@@ -370,26 +354,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                   />
                 </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground block">Tournament</span>
-                  <span className="text-white font-medium">{match.competition_name || 'League Match'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block">Stage</span>
-                  <span className="text-white font-medium capitalize">{match.match_type}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block">Venue</span>
-                  <span className="text-white font-medium">{match.venue || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground block">Result</span>
-                  <span className="text-white font-medium capitalize">{match.result}</span>
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
           
           <EditableScorecard
