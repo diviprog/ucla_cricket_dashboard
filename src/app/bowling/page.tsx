@@ -107,8 +107,13 @@ export default function BowlingPage() {
       return
     }
 
+    // Filter out Unclaimed players
+    const filtered = (data || []).filter(row => 
+      !row.player?.name?.toLowerCase().startsWith('unclaimed')
+    )
+    
     // Sort data
-    const sortedData = [...(data || [])].sort((a, b) => {
+    const sortedData = [...filtered].sort((a, b) => {
       switch (sortBy) {
         case 'wickets':
           return b.total_wickets - a.total_wickets

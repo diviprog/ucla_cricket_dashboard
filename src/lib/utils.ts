@@ -67,3 +67,19 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
   }
 }
 
+/**
+ * Check if a player name indicates unclaimed
+ */
+export function isUnclaimed(name: string | undefined): boolean {
+  return name?.toLowerCase().startsWith('unclaimed') || false
+}
+
+/**
+ * Format player name for display - show "Unclaimed" instead of "Unclaimed #1"
+ */
+export function displayPlayerName(name: string | undefined): string {
+  if (!name) return 'Unknown'
+  if (isUnclaimed(name)) return 'Unclaimed'
+  return name
+}
+

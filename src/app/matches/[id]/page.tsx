@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { formatStat, formatDate, getInitials, cn } from '@/lib/utils'
+import { formatStat, formatDate, getInitials, cn, isUnclaimed, displayPlayerName } from '@/lib/utils'
 import { EditableScorecard } from '@/components/editable-scorecard'
 import { useAuth } from '@/lib/auth/auth-context'
 
@@ -29,11 +29,6 @@ interface MatchData {
   battingPerformances: any[]
   bowlingPerformances: any[]
   fieldingPerformances: any[]
-}
-
-// Check if a player name indicates unclaimed
-function isUnclaimed(name: string | undefined): boolean {
-  return name?.toLowerCase().startsWith('unclaimed') || false
 }
 
 // Parse score string like "156/7" to get total
@@ -471,7 +466,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                                 'font-medium',
                                 playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                               )}>
-                                {playerIsUnclaimed ? '❓ ' : ''}{perf.player?.name}
+                                {playerIsUnclaimed ? '❓ ' : ''}{displayPlayerName(perf.player?.name)}
                                 {perf.not_out && <span className="text-ucla-gold">*</span>}
                               </span>
                             </Link>
@@ -575,7 +570,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                                 'font-medium',
                                 playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                               )}>
-                                {playerIsUnclaimed ? '❓ ' : ''}{perf.player?.name}
+                                {playerIsUnclaimed ? '❓ ' : ''}{displayPlayerName(perf.player?.name)}
                               </span>
                             </Link>
                           </td>
@@ -646,7 +641,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                                   'font-medium',
                                   playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                                 )}>
-                                  {playerIsUnclaimed ? '❓ ' : ''}{perf.player?.name}
+                                  {playerIsUnclaimed ? '❓ ' : ''}{displayPlayerName(perf.player?.name)}
                                 </span>
                               </Link>
                             </td>

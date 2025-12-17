@@ -28,7 +28,7 @@ interface Season {
   name: string
 }
 
-type SortKey = 'dismissals' | 'catches' | 'runOuts' | 'stumpings' | 'perMatch'
+type SortKey = 'dismissals' | 'catches' | 'runOuts' | 'stumpings'
 
 export default function FieldingPage() {
   const [stats, setStats] = useState<FieldingStatsRow[]>([])
@@ -77,8 +77,14 @@ export default function FieldingPage() {
       return
     }
 
+    // Filter out Unclaimed players and players with 0 dismissals
+    const filtered = (data || []).filter(row => 
+      !row.player?.name?.toLowerCase().startsWith('unclaimed') && 
+      row.total_dismissals > 0
+    )
+    
     // Sort data
-    const sortedData = [...(data || [])].sort((a, b) => {
+    const sortedData = [...filtered].sort((a, b) => {
       switch (sortBy) {
         case 'dismissals':
           return b.total_dismissals - a.total_dismissals
@@ -88,8 +94,6 @@ export default function FieldingPage() {
           return b.total_run_outs - a.total_run_outs
         case 'stumpings':
           return b.total_stumpings - a.total_stumpings
-        case 'perMatch':
-          return b.dismissals_per_match - a.dismissals_per_match
         default:
           return 0
       }
@@ -140,7 +144,6 @@ export default function FieldingPage() {
             <option value="catches">Catches</option>
             <option value="runOuts">Run Outs</option>
             <option value="stumpings">Stumpings</option>
-            <option value="perMatch">Dismissals Per Match</option>
           </select>
         </div>
       </div>
@@ -161,12 +164,10 @@ export default function FieldingPage() {
               <tr className="border-b border-border">
                 <th className="text-left py-3 px-4 text-muted-foreground font-medium">#</th>
                 <th className="text-left py-3 px-4 text-muted-foreground font-medium">Player</th>
-                <th className="text-center py-3 px-4 text-muted-foreground font-medium">M</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">Ct</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">RO</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">St</th>
                 <th className="text-center py-3 px-4 text-muted-foreground font-medium">Total</th>
-                <th className="text-center py-3 px-4 text-muted-foreground font-medium">D/M</th>
               </tr>
             </thead>
             <tbody>
@@ -195,9 +196,6 @@ export default function FieldingPage() {
                     >
                       {row.player.name}
                     </a>
-                  </td>
-                  <td className="py-3 px-4 text-center text-muted-foreground">
-                    {row.matches_played}
                   </td>
                   <td className="py-3 px-4 text-center">
                     <span className={cn(
@@ -228,9 +226,6 @@ export default function FieldingPage() {
                       {row.total_dismissals}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-center text-white">
-                    {row.dismissals_per_match.toFixed(2)}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -241,8 +236,8 @@ export default function FieldingPage() {
       {/* Legend */}
       <div className="mt-8 text-sm text-muted-foreground">
         <p className="mb-2"><strong>Legend:</strong></p>
-        <p>M = Matches Played, Ct = Catches, RO = Run Outs, St = Stumpings</p>
-        <p>Total = Total Dismissals (Ct + RO + St), D/M = Dismissals Per Match</p>
+        <p>Ct = Catches, RO = Run Outs, St = Stumpings</p>
+        <p>Total = Total Dismissals (Ct + RO + St)</p>
       </div>
 
       {/* Note */}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { formatStat, getInitials, cn } from '@/lib/utils'
+import { formatStat, getInitials, cn, isUnclaimed, displayPlayerName } from '@/lib/utils'
 
 interface Player {
   id: string
@@ -61,11 +61,6 @@ interface EditableScorecardProps {
 // Special player ID for unclaimed performances
 const UNCLAIMED_PLAYER_ID = 'unclaimed'
 
-// Check if a player name indicates unclaimed
-function isUnclaimed(name: string | undefined): boolean {
-  return name?.toLowerCase().startsWith('unclaimed') || false
-}
-
 // Parse score string like "156/7" to get total
 function parseScoreTotal(score: string | null): number | null {
   if (!score) return null
@@ -117,8 +112,8 @@ export function EditableScorecard({
     const response = await fetch('/api/players/list')
     const data = await response.json()
     if (data.success) {
-      // Filter out unclaimed players from the roster list
-      setPlayers(data.players.filter((p: Player) => !isUnclaimed(p.name)))
+      // Filter out unclaimed players from the roster list (they shouldn't be selectable)
+      setPlayers(data.players.filter((p: Player) => !p.name.toLowerCase().startsWith('unclaimed')))
     }
   }
 
@@ -244,7 +239,7 @@ export function EditableScorecard({
             'font-medium',
             isUnclaimedPlayer ? 'text-orange-400 italic' : 'text-white'
           )}>
-            {isUnclaimedPlayer ? '❓ ' : ''}{currentName}
+            {isUnclaimedPlayer ? '❓ ' : ''}{isUnclaimedPlayer ? 'Unclaimed' : currentName}
           </span>
         </button>
 
@@ -526,7 +521,7 @@ export function EditableScorecard({
                           />
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-center">{perf.overs}</td>
+                      <EditableStatCell perfId={perf.id} perfType="bowling" field="overs" value={perf.overs} />
                       <EditableStatCell perfId={perf.id} perfType="bowling" field="maidens" value={perf.maidens} />
                       <EditableStatCell perfId={perf.id} perfType="bowling" field="runs_conceded" value={perf.runs_conceded} />
                       <EditableStatCell perfId={perf.id} perfType="bowling" field="wickets" value={perf.wickets} isHighlight />
