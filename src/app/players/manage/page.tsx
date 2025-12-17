@@ -17,6 +17,8 @@ export default function ManagePlayersPage() {
   const [newPlayerName, setNewPlayerName] = useState('')
   const [newAlias, setNewAlias] = useState<{ playerId: string; alias: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Player | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
@@ -95,6 +97,33 @@ export default function ManagePlayersPage() {
       setMessage({ type: 'error', text: 'Failed to add alias' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDeletePlayer = async (player: Player) => {
+    setDeleting(player.id)
+    setMessage(null)
+    
+    try {
+      const response = await fetch(`/api/players?id=${player.id}`, {
+        method: 'DELETE',
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setMessage({ type: 'success', text: `Player "${player.name}" deleted!` })
+        setConfirmDelete(null)
+        fetchPlayers()
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to delete player' })
+        setConfirmDelete(null)
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to delete player' })
+      setConfirmDelete(null)
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -188,13 +217,23 @@ export default function ManagePlayersPage() {
                       </Button>
                     </div>
                   ) : (
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => setNewAlias({ playerId: player.id, alias: '' })}
-                    >
-                      + Add Alias
-                    </Button>
+                    <>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => setNewAlias({ playerId: player.id, alias: '' })}
+                      >
+                        + Add Alias
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        onClick={() => setConfirmDelete(player)}
+                      >
+                        🗑️ Delete
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -202,6 +241,37 @@ export default function ManagePlayersPage() {
           ))}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-2">Delete Player?</h3>
+            <p className="text-muted-foreground mb-4">
+              Are you sure you want to delete <strong className="text-white">{confirmDelete.name}</strong>?
+            </p>
+            <p className="text-sm text-orange-400 mb-6">
+              ⚠️ This cannot be undone. Players with match performances cannot be deleted.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button 
+                variant="ghost" 
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting === confirmDelete.id}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => handleDeletePlayer(confirmDelete)}
+                disabled={deleting === confirmDelete.id}
+              >
+                {deleting === confirmDelete.id ? 'Deleting...' : 'Delete Player'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </AdminGuard>
   )

@@ -99,3 +99,97 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// DELETE /api/players - Delete a player
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const playerId = searchParams.get('id')
+    
+    if (!playerId) {
+      return NextResponse.json(
+        { success: false, error: 'Player ID is required' },
+        { status: 400 }
+      )
+    }
+    
+    // Check if player has any performances
+    const { data: battingPerfs } = await supabase
+      .from('batting_performances')
+      .select('id')
+      .eq('player_id', playerId)
+      .limit(1)
+    
+    const { data: bowlingPerfs } = await supabase
+      .from('bowling_performances')
+      .select('id')
+      .eq('player_id', playerId)
+      .limit(1)
+    
+    const { data: fieldingPerfs } = await supabase
+      .from('fielding_performances')
+      .select('id')
+      .eq('player_id', playerId)
+      .limit(1)
+    
+    const hasPerformances = 
+      (battingPerfs && battingPerfs.length > 0) ||
+      (bowlingPerfs && bowlingPerfs.length > 0) ||
+      (fieldingPerfs && fieldingPerfs.length > 0)
+    
+    if (hasPerformances) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Cannot delete player with match performances. Remove their performances first or reassign them to another player.' 
+        },
+        { status: 400 }
+      )
+    }
+    
+    // Delete player aliases first (due to foreign key constraint)
+    await supabase
+      .from('player_aliases')
+      .delete()
+      .eq('player_id', playerId)
+    
+    // Delete player season stats
+    await supabase
+      .from('player_season_stats')
+      .delete()
+      .eq('player_id', playerId)
+    
+    await supabase
+      .from('bowling_season_stats')
+      .delete()
+      .eq('player_id', playerId)
+    
+    await supabase
+      .from('fielding_season_stats')
+      .delete()
+      .eq('player_id', playerId)
+    
+    // Delete the player
+    const { error } = await supabase
+      .from('players')
+      .delete()
+      .eq('id', playerId)
+    
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 500 }
+      )
+    }
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Player deleted successfully',
+    })
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete player' },
+      { status: 500 }
+    )
+  }
+}
+
