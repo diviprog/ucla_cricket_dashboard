@@ -246,8 +246,9 @@ export default function Dashboard() {
                     icon="🏆"
                     performer={topPerformers.topRunScorer}
                     mainStat={topPerformers.topRunScorer?.runs}
-                    subtitle={topPerformers.topRunScorer && 
-                      `Avg ${topPerformers.topRunScorer.average.toFixed(1)} • SR ${topPerformers.topRunScorer.strikeRate.toFixed(1)}`
+                    subtitle={topPerformers.topRunScorer 
+                      ? `Avg ${topPerformers.topRunScorer.average.toFixed(1)} • SR ${topPerformers.topRunScorer.strikeRate.toFixed(1)}`
+                      : undefined
                     }
                     color="ucla-blue"
                   />
@@ -258,8 +259,9 @@ export default function Dashboard() {
                     icon="📊"
                     performer={topPerformers.bestAverage}
                     mainStat={topPerformers.bestAverage?.average.toFixed(2)}
-                    subtitle={topPerformers.bestAverage && 
-                      `${topPerformers.bestAverage.runs} runs • ${topPerformers.bestAverage.matches} matches`
+                    subtitle={topPerformers.bestAverage 
+                      ? `${topPerformers.bestAverage.runs} runs • ${topPerformers.bestAverage.matches} matches`
+                      : undefined
                     }
                     color="ucla-blue"
                   />
@@ -270,8 +272,9 @@ export default function Dashboard() {
                     icon="⚡"
                     performer={topPerformers.bestStrikeRate}
                     mainStat={topPerformers.bestStrikeRate?.strikeRate.toFixed(1)}
-                    subtitle={topPerformers.bestStrikeRate && 
-                      `${topPerformers.bestStrikeRate.runs} runs off ${topPerformers.bestStrikeRate.balls} balls`
+                    subtitle={topPerformers.bestStrikeRate 
+                      ? `${topPerformers.bestStrikeRate.runs} runs off ${topPerformers.bestStrikeRate.balls} balls`
+                      : undefined
                     }
                     color="ucla-blue"
                   />
@@ -289,8 +292,9 @@ export default function Dashboard() {
                     icon="🏆"
                     performer={topPerformers.topWicketTaker}
                     mainStat={topPerformers.topWicketTaker?.wickets}
-                    subtitle={topPerformers.topWicketTaker && 
-                      `Avg ${topPerformers.topWicketTaker.average.toFixed(1)} • Econ ${topPerformers.topWicketTaker.economy.toFixed(2)}`
+                    subtitle={topPerformers.topWicketTaker 
+                      ? `Avg ${topPerformers.topWicketTaker.average.toFixed(1)} • Econ ${topPerformers.topWicketTaker.economy.toFixed(2)}`
+                      : undefined
                     }
                     color="green-700"
                     textColor="green-400"
@@ -301,8 +305,9 @@ export default function Dashboard() {
                     icon="📊"
                     performer={topPerformers.bestBowlingAverage}
                     mainStat={topPerformers.bestBowlingAverage?.average.toFixed(2)}
-                    subtitle={topPerformers.bestBowlingAverage && 
-                      `${topPerformers.bestBowlingAverage.wickets} wickets • ${topPerformers.bestBowlingAverage.matches} matches`
+                    subtitle={topPerformers.bestBowlingAverage 
+                      ? `${topPerformers.bestBowlingAverage.wickets} wickets • ${topPerformers.bestBowlingAverage.matches} matches`
+                      : undefined
                     }
                     color="green-700"
                     textColor="green-400"
@@ -313,8 +318,9 @@ export default function Dashboard() {
                     icon="💰"
                     performer={topPerformers.bestEconomy}
                     mainStat={topPerformers.bestEconomy?.economy.toFixed(2)}
-                    subtitle={topPerformers.bestEconomy && 
-                      `${topPerformers.bestEconomy.overs} overs • ${topPerformers.bestEconomy.wickets} wickets`
+                    subtitle={topPerformers.bestEconomy 
+                      ? `${topPerformers.bestEconomy.overs} overs • ${topPerformers.bestEconomy.wickets} wickets`
+                      : undefined
                     }
                     color="green-700"
                     textColor="green-400"
@@ -333,8 +339,9 @@ export default function Dashboard() {
                     icon="🏆"
                     performer={topPerformers.topFielder}
                     mainStat={topPerformers.topFielder?.dismissals}
-                    subtitle={topPerformers.topFielder && 
-                      `${topPerformers.topFielder.catches} ct • ${topPerformers.topFielder.runOuts} ro • ${topPerformers.topFielder.matches} matches`
+                    subtitle={topPerformers.topFielder 
+                      ? `${topPerformers.topFielder.catches} ct • ${topPerformers.topFielder.runOuts} ro • ${topPerformers.topFielder.matches} matches`
+                      : undefined
                     }
                     color="purple-700"
                     textColor="purple-400"
@@ -466,7 +473,7 @@ function PerformerCard({
   icon: string
   performer: { id: string; name: string } | null
   mainStat: string | number | undefined
-  subtitle: string | undefined
+  subtitle?: string
   color?: string
   textColor?: string
 }) {
