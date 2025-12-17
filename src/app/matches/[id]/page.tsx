@@ -144,6 +144,14 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
     }
   }
 
+  async function handleDoneEditing() {
+    // Save metadata first, then exit edit mode
+    if (match) {
+      await saveMetadata()
+    }
+    setEditMode(false)
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -217,14 +225,14 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
             {/* Edit Toggle Button - Admin Only */}
             {isAdmin && (
               <button
-                onClick={() => setEditMode(!editMode)}
+                onClick={editMode ? handleDoneEditing : () => setEditMode(true)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   editMode 
                     ? 'bg-ucla-gold text-black hover:bg-ucla-gold/90' 
                     : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
               >
-                {editMode ? '✓ Done Editing' : '✏️ Edit Scorecard'}
+                {editMode ? '✓ Save & Exit' : '✏️ Edit Scorecard'}
               </button>
             )}
             
@@ -273,88 +281,80 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <span>📋</span> Match Details
-                <span className="text-xs font-normal text-ucla-gold bg-ucla-gold/20 px-2 py-1 rounded">
-                  Click fields to edit
+                <span className="text-xs font-normal text-muted-foreground">
+                  Edit fields below, then click &quot;Save &amp; Exit&quot; above
                 </span>
               </h3>
-              <button
-                onClick={saveMetadata}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
-              >
-                💾 Save Changes
-              </button>
             </div>
             
-            {true ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">
-                    Tournament/Competition Name
-                  </label>
-                  <input
-                    type="text"
-                    value={metadata.competition_name}
-                    onChange={(e) => setMetadata(prev => ({ ...prev, competition_name: e.target.value }))}
-                    placeholder="e.g., SoCal Premier League 2025"
-                    className="w-full px-3 py-2 bg-background border border-border rounded text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">
-                    Match Stage
-                  </label>
-                  <select
-                    value={metadata.match_type}
-                    onChange={(e) => setMetadata(prev => ({ ...prev, match_type: e.target.value }))}
-                    className="w-full px-3 py-2 bg-background border border-border rounded text-white"
-                  >
-                    <option value="league">League Stage</option>
-                    <option value="playoff">Semi-Final</option>
-                    <option value="tournament">Final</option>
-                    <option value="friendly">Friendly</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">
-                    Result
-                  </label>
-                  <select
-                    value={metadata.result}
-                    onChange={(e) => setMetadata(prev => ({ ...prev, result: e.target.value }))}
-                    className="w-full px-3 py-2 bg-background border border-border rounded text-white"
-                  >
-                    <option value="win">Win</option>
-                    <option value="loss">Loss</option>
-                    <option value="tie">Tie</option>
-                    <option value="no_result">No Result</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">
-                    Venue
-                  </label>
-                  <input
-                    type="text"
-                    value={metadata.venue}
-                    onChange={(e) => setMetadata(prev => ({ ...prev, venue: e.target.value }))}
-                    placeholder="e.g., Woodley Park Cricket Field"
-                    className="w-full px-3 py-2 bg-background border border-border rounded text-white"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">
-                    Notes
-                  </label>
-                  <input
-                    type="text"
-                    value={metadata.notes}
-                    onChange={(e) => setMetadata(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Any additional notes about the match"
-                    className="w-full px-3 py-2 bg-background border border-border rounded text-white"
-                  />
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Tournament/Competition
+                </label>
+                <input
+                  type="text"
+                  value={metadata.competition_name}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, competition_name: e.target.value }))}
+                  placeholder="e.g., SoCal Premier League 2025"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
               </div>
-            ) : null}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Match Stage
+                </label>
+                <select
+                  value={metadata.match_type}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, match_type: e.target.value }))}
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                >
+                  <option value="league">League Stage</option>
+                  <option value="playoff">Semi-Final</option>
+                  <option value="tournament">Final</option>
+                  <option value="friendly">Friendly</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Result
+                </label>
+                <select
+                  value={metadata.result}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, result: e.target.value }))}
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                >
+                  <option value="win">Win</option>
+                  <option value="loss">Loss</option>
+                  <option value="tie">Tie</option>
+                  <option value="no_result">No Result</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Ground / Location
+                </label>
+                <input
+                  type="text"
+                  value={metadata.venue}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, venue: e.target.value }))}
+                  placeholder="e.g., Woodley Park Cricket Field"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={metadata.notes}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Any additional notes about the match"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
+              </div>
+            </div>
           </div>
           
           <EditableScorecard
