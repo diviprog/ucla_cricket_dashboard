@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
-import { parseCricClubsScorecard, generateContentHash } from '@/lib/parsers/cricclubs-parser'
+import { parseCricClubsScorecard, generateContentHash as generateCricClubsHash } from '@/lib/parsers/cricclubs-parser'
+import { parseCricCenterScorecard, generateContentHash as generateCricCenterHash } from '@/lib/parsers/criccenter-parser'
+import { detectScorecardFormat } from '@/lib/parsers/format-detector'
 import { resolvePlayerName, createPlayerIfNotExists, initializePlayerCache } from '@/lib/parsers/player-resolver'
-import { 
-  detectSeasonFromDate, 
-  getOrCreateSeason, 
+import {
+  detectSeasonFromDate,
+  getOrCreateSeason,
   updatePlayerSeasonStats,
   updateBowlingSeasonStats,
   updateFieldingSeasonStats,
 } from '@/lib/services/stats-service'
+import { ParsedMatchData } from '@/types/models'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,17 +24,29 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
+
+    // Detect scorecard format
+    const format = detectScorecardFormat(html)
+
+    if (format === 'unknown') {
+      return NextResponse.json(
+        { success: false, error: 'Unable to detect scorecard format. Please ensure the HTML is from CricClubs or CricCenter.' },
+        { status: 400 }
+      )
+    }
+
     // Generate content hash for duplicate detection
-    const contentHash = generateContentHash(html)
-    
+    const contentHash = format === 'cricclubs'
+      ? generateCricClubsHash(html)
+      : generateCricCenterHash(html)
+
     // Check for duplicate
     const { data: existingImport } = await supabase
       .from('import_history')
       .select('id, match_id')
       .eq('content_hash', contentHash)
       .single()
-    
+
     if (existingImport) {
       return NextResponse.json({
         success: false,
@@ -39,9 +54,14 @@ export async function POST(request: NextRequest) {
         matchId: existingImport.match_id,
       })
     }
-    
-    // Parse the HTML
-    const parsedData = parseCricClubsScorecard(html)
+
+    // Parse the HTML using the appropriate parser
+    let parsedData: ParsedMatchData
+    if (format === 'cricclubs') {
+      parsedData = parseCricClubsScorecard(html)
+    } else {
+      parsedData = parseCricCenterScorecard(html)
+    }
     
     // Detect and get/create season
     const seasonName = detectSeasonFromDate(parsedData.date)
