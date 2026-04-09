@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseCricClubsScorecard, ParseError } from '@/lib/parsers/cricclubs-parser'
+import { parseCricCenterScorecard } from '@/lib/parsers/criccenter-parser'
+import { detectScorecardFormat } from '@/lib/parsers/format-detector'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { html, filename } = body
-    
+
     if (!html) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'No HTML content provided',
           errorCode: 'NO_CONTENT',
           details: 'The uploaded file appears to be empty.'
@@ -17,8 +19,27 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
-    const parsedData = parseCricClubsScorecard(html)
+
+    // Detect the format first
+    const format = detectScorecardFormat(html)
+
+    // Only reject if format is unknown
+    if (format === 'unknown') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unable to detect scorecard format',
+          errorCode: 'UNKNOWN_FORMAT',
+          details: 'This HTML file does not appear to be from CricClubs or CricCenter. Please upload a valid scorecard HTML file.'
+        },
+        { status: 400 }
+      )
+    }
+
+    // Parse using the appropriate parser
+    const parsedData = format === 'cricclubs'
+      ? parseCricClubsScorecard(html)
+      : parseCricCenterScorecard(html)
     
     // Add summary of what was parsed
     const battingCount = parsedData.innings.reduce((sum, inn) => sum + inn.battingEntries.length, 0)

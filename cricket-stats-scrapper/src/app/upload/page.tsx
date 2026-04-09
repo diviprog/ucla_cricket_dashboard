@@ -211,15 +211,18 @@ export default function UploadPage() {
         Upload <span className="text-ucla-gold">Match Scorecards</span>
       </h1>
       <p className="text-muted-foreground mb-2">
-        Drag and drop CricClubs HTML files to import match data
+        Drag and drop CricClubs or CricCenter HTML files to import match data
       </p>
       <div className="bg-ucla-blue/20 border border-ucla-blue/40 rounded-lg p-4 mb-8">
-        <p className="text-sm text-ucla-gold font-medium">💡 Important: Only upload "Full Scorecard" pages</p>
+        <p className="text-sm text-ucla-gold font-medium">💡 Supported Formats</p>
         <p className="text-xs text-muted-foreground mt-1">
-          Go to CricClubs → Match → Click the <strong>"Full Scorecard"</strong> tab → Save page (Cmd+S or Ctrl+S)
+          <strong>CricClubs:</strong> Match → "Full Scorecard" tab → Save page (Cmd+S or Ctrl+S)
         </p>
         <p className="text-xs text-muted-foreground">
-          Other tabs (Info, Ball by Ball, Over by Over, Charts) will not work.
+          <strong>CricCenter:</strong> Match → "Scorecard" tab → Save page (Cmd+S or Ctrl+S)
+        </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          ⚠️ Other tabs (Info, Ball by Ball, Charts, etc.) will not work.
         </p>
       </div>
 
