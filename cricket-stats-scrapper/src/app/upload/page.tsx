@@ -22,7 +22,8 @@ interface ParsedFile {
   error?: string
   errorCode?: string
   errorDetails?: string
-  content?: string
+  content?: string // HTML content (for HTML files)
+  rawFile?: File // Original file (for webarchive files)
 }
 
 interface MatchGroup {
@@ -74,42 +75,36 @@ export default function UploadPage() {
       ))
 
       try {
-        let content: string
+        // For all files (HTML and webarchive), send as FormData to server
+        // Server will handle extraction if needed
+        const formData = new FormData()
+        formData.append('file', file)
 
-        // Check if it's a webarchive file
-        const isWebArchive = file.name.toLowerCase().endsWith('.webarchive')
-
-        if (isWebArchive) {
-          // For webarchive files, we need to extract HTML first
-          // We'll use the import API which handles webarchive extraction
-          const arrayBuffer = await file.arrayBuffer()
-
-          // Import webarchive extraction utility
-          const { extractHTMLFromWebArchive } = await import('@/lib/parsers/webarchive-extractor')
-
-          try {
-            content = await extractHTMLFromWebArchive(arrayBuffer)
-          } catch (error) {
-            throw new Error(error instanceof Error ? error.message : 'Failed to extract HTML from webarchive')
-          }
-        } else {
-          // Regular HTML file
-          content = await file.text()
-        }
-
-        // Send to parse API
+        // Send to parse API (which now handles both HTML and webarchive)
         const response = await fetch('/api/parse', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: content, filename: file.name }),
+          body: formData, // Send as FormData, not JSON
         })
 
         const result = await response.json()
 
+        // For webarchive files, we need to extract HTML again for import
+        // For HTML files, just read the text
+        let content: string | undefined
+        const isWebArchiveFile = file.name.toLowerCase().endsWith('.webarchive')
+
+        if (isWebArchiveFile) {
+          // For webarchive, we'll need to send the file itself during import
+          // Store the file reference instead of content
+          content = undefined // Will send file during import
+        } else {
+          content = await file.text()
+        }
+
         if (result.success) {
           setFiles(prev => prev.map(f =>
             f.id === fileId
-              ? { ...f, status: 'parsed', matchInfo: result.data, content }
+              ? { ...f, status: 'parsed', matchInfo: result.data, content, rawFile: isWebArchiveFile ? file : undefined }
               : f
           ))
         } else {
@@ -188,25 +183,46 @@ export default function UploadPage() {
     
     try {
       for (const group of matchGroups) {
-        // Find the main file (one with content)
-        const mainFile = group.files.find(f => f.content)
-        if (!mainFile?.content) continue
-        
-        const response = await fetch('/api/matches/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            html: mainFile.content,
-            metadata: {
-              ...group.metadata,
-              date: group.date,
-              teams: group.teams,
-            },
-          }),
-        })
-        
+        // Find the main file (with content or rawFile)
+        const mainFile = group.files.find(f => f.content || f.rawFile)
+        if (!mainFile) continue
+
+        let response: Response
+
+        if (mainFile.rawFile) {
+          // For webarchive files, send as FormData
+          const formData = new FormData()
+          formData.append('file', mainFile.rawFile)
+          formData.append('metadata', JSON.stringify({
+            ...group.metadata,
+            date: group.date,
+            teams: group.teams,
+          }))
+
+          response = await fetch('/api/matches/import', {
+            method: 'POST',
+            body: formData,
+          })
+        } else if (mainFile.content) {
+          // For HTML files, send as JSON
+          response = await fetch('/api/matches/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              html: mainFile.content,
+              metadata: {
+                ...group.metadata,
+                date: group.date,
+                teams: group.teams,
+              },
+            }),
+          })
+        } else {
+          continue
+        }
+
         const result = await response.json()
-        
+
         if (!result.success) {
           console.error('Import error:', result.error)
         }
