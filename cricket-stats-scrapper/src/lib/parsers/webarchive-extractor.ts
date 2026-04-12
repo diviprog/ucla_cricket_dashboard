@@ -8,7 +8,19 @@ import * as bplist from 'bplist-parser'
  */
 export async function extractHTMLFromWebArchive(buffer: ArrayBuffer | Buffer): Promise<string> {
   // Convert ArrayBuffer to Buffer if needed
-  const nodeBuffer = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)
+  // Handle both Node.js Buffer and browser ArrayBuffer
+  let nodeBuffer: Buffer
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(buffer)) {
+    nodeBuffer = buffer
+  } else {
+    // Browser environment or ArrayBuffer
+    if (typeof Buffer !== 'undefined') {
+      nodeBuffer = Buffer.from(buffer as ArrayBuffer)
+    } else {
+      // Fallback for pure browser environment without Buffer polyfill
+      throw new Error('Buffer is not available. Please ensure the environment supports Buffer.')
+    }
+  }
 
   try {
     // Parse binary plist

@@ -61,42 +61,63 @@ export default function UploadPage() {
       matchInfo: null,
       status: 'pending' as const,
     }))
-    
+
     setFiles(prev => [...prev, ...newFiles])
-    
+
     // Parse each file
     for (let i = 0; i < acceptedFiles.length; i++) {
       const file = acceptedFiles[i]
       const fileId = newFiles[i].id
-      
-      setFiles(prev => prev.map(f => 
+
+      setFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'parsing' } : f
       ))
-      
+
       try {
-        const content = await file.text()
-        
+        let content: string
+
+        // Check if it's a webarchive file
+        const isWebArchive = file.name.toLowerCase().endsWith('.webarchive')
+
+        if (isWebArchive) {
+          // For webarchive files, we need to extract HTML first
+          // We'll use the import API which handles webarchive extraction
+          const arrayBuffer = await file.arrayBuffer()
+
+          // Import webarchive extraction utility
+          const { extractHTMLFromWebArchive } = await import('@/lib/parsers/webarchive-extractor')
+
+          try {
+            content = await extractHTMLFromWebArchive(arrayBuffer)
+          } catch (error) {
+            throw new Error(error instanceof Error ? error.message : 'Failed to extract HTML from webarchive')
+          }
+        } else {
+          // Regular HTML file
+          content = await file.text()
+        }
+
         // Send to parse API
         const response = await fetch('/api/parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ html: content, filename: file.name }),
         })
-        
+
         const result = await response.json()
-        
+
         if (result.success) {
-          setFiles(prev => prev.map(f => 
-            f.id === fileId 
+          setFiles(prev => prev.map(f =>
+            f.id === fileId
               ? { ...f, status: 'parsed', matchInfo: result.data, content }
               : f
           ))
         } else {
-          setFiles(prev => prev.map(f => 
-            f.id === fileId 
-              ? { 
-                  ...f, 
-                  status: 'error', 
+          setFiles(prev => prev.map(f =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  status: 'error',
                   error: result.error,
                   errorCode: result.errorCode,
                   errorDetails: result.details,
@@ -105,9 +126,9 @@ export default function UploadPage() {
           ))
         }
       } catch (error) {
-        setFiles(prev => prev.map(f => 
-          f.id === fileId 
-            ? { ...f, status: 'error', error: 'Network error: Failed to parse file', errorCode: 'NETWORK_ERROR' }
+        setFiles(prev => prev.map(f =>
+          f.id === fileId
+            ? { ...f, status: 'error', error: error instanceof Error ? error.message : 'Failed to parse file', errorCode: 'PARSE_ERROR' }
             : f
         ))
       }
@@ -201,6 +222,7 @@ export default function UploadPage() {
     onDrop,
     accept: {
       'text/html': ['.html', '.htm'],
+      'application/x-webarchive': ['.webarchive'],
     },
   })
 
@@ -211,7 +233,7 @@ export default function UploadPage() {
         Upload <span className="text-ucla-gold">Match Scorecards</span>
       </h1>
       <p className="text-muted-foreground mb-2">
-        Drag and drop CricClubs or CricCenter HTML files to import match data
+        Drag and drop CricClubs or CricCenter HTML files (or Safari WebArchive files) to import match data
       </p>
       <div className="bg-ucla-blue/20 border border-ucla-blue/40 rounded-lg p-4 mb-8">
         <p className="text-sm text-ucla-gold font-medium">💡 Supported Formats</p>
@@ -222,6 +244,9 @@ export default function UploadPage() {
           <strong>CricCenter:</strong> Match → "Scorecard" tab → Save page (Cmd+S or Ctrl+S)
         </p>
         <p className="text-xs text-muted-foreground mt-2">
+          📄 Accepts: .html, .htm, .webarchive (Safari Web Archive)
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
           ⚠️ Other tabs (Info, Ball by Ball, Charts, etc.) will not work.
         </p>
       </div>
@@ -242,8 +267,8 @@ export default function UploadPage() {
           <p className="text-lg text-ucla-gold">Drop the files here...</p>
         ) : (
           <>
-            <p className="text-lg text-white">Drag & drop HTML files here</p>
-            <p className="text-sm text-muted-foreground mt-2">or click to select files</p>
+            <p className="text-lg text-white">Drag & drop HTML or WebArchive files here</p>
+            <p className="text-sm text-muted-foreground mt-2">or click to select files (.html, .htm, .webarchive)</p>
           </>
         )}
       </div>
