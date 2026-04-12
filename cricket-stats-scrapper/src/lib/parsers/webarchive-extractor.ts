@@ -14,11 +14,11 @@ export async function extractHTMLFromWebArchive(buffer: ArrayBuffer | Buffer): P
     // Parse binary plist
     const parsed = await bplist.parseBuffer(nodeBuffer)
 
-    if (!parsed || parsed.length === 0) {
+    if (!parsed || !Array.isArray(parsed) || parsed.length < 1) {
       throw new Error('Failed to parse webarchive file - empty result')
     }
 
-    const webarchive = parsed[0]
+    const webarchive = parsed[0] as any
 
     // Extract HTML from WebMainResource
     const mainResource = webarchive.WebMainResource
