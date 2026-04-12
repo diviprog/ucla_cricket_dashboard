@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@layer base {
+:root {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 14%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 71% 53%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 43 96% 56%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 217 71% 53%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold;
+    letter-spacing: -0.02em;
+  }
+
+  /* Better number formatting */
+  .tabular-nums, [type="number"] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.8);
+}
+
+/* Table styles */
+.stats-table {
+  @apply w-full text-sm;
+}
+
+.stats-table th {
+  @apply bg-ucla-blue text-white font-semibold px-4 py-3 text-left sticky top-0 z-10;
+  backdrop-filter: blur(8px);
+}
+
+.stats-table td {
+  @apply px-4 py-3 border-b border-border transition-colors duration-150;
+}
+
+.stats-table tbody tr {
+  @apply transition-all duration-200;
+}
+
+.stats-table tbody tr:hover {
+  @apply bg-muted/50 shadow-sm;
+  transform: translateX(2px);
+}
+
+.stats-table tbody tr:hover td:first-child::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1 bg-ucla-gold;
+}
+
+.stats-table tbody tr td:first-child {
+  @apply relative;
+}
+
+/* Score format */
+.score-format {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.not-out::after {
+  content: '*';
+  @apply text-ucla-gold font-bold;
+}
+
+/* Loading skeleton */
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.skeleton {
+  @apply bg-muted rounded;
+  animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Smooth page transitions */
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-transition {
+  animation: page-fade-in 0.3s ease-out;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(135deg, #2D68C4 0%, #FFB81C 100%);
+}
+
+/* Stats badge */
+.stats-badge {
+  @apply inline-flex items-center justify-center;
+  @apply rounded-full px-2 py-0.5;
+  @apply text-xs font-semibold;
+  @apply bg-ucla-blue/20 text-ucla-blue;
+  @apply border border-ucla-blue/30;
+}
+
+/* Ranking badge */
+.ranking-badge {
+  @apply inline-flex items-center justify-center;
+  @apply w-6 h-6 rounded-full;
+  @apply text-xs font-bold;
+  @apply shadow-md;
+}
+
+.ranking-badge.rank-1 {
+  @apply bg-gradient-to-br from-yellow-400 to-yellow-600 text-yellow-900;
+}
+
+.ranking-badge.rank-2 {
+  @apply bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900;
+}
+
+.ranking-badge.rank-3 {
+  @apply bg-gradient-to-br from-orange-400 to-orange-600 text-orange-900;
+}
