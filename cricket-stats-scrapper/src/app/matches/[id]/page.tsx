@@ -7,6 +7,15 @@ import { supabase } from '@/lib/supabase/client'
 import { formatStat, formatDate, getInitials, cn, isUnclaimed, displayPlayerName } from '@/lib/utils'
 import { EditableScorecard } from '@/components/editable-scorecard'
 import { useAuth } from '@/lib/auth/auth-context'
+import {
+  TrendingUp,
+  Target,
+  Hand,
+  Edit3,
+  Check,
+  Trophy,
+  FileText,
+} from 'lucide-react'
 
 interface MatchData {
   id: string
@@ -45,6 +54,10 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
   const [loading, setLoading] = useState(true)
   const [editMode, setEditMode] = useState(false)
   const [metadata, setMetadata] = useState({
+    our_team_name: '',
+    opponent: '',
+    our_score: '',
+    opponent_score: '',
     competition_name: '',
     match_type: 'league',
     venue: '',
@@ -112,6 +125,10 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
 
     setMatch(fullMatch)
     setMetadata({
+      our_team_name: matchData.our_team_name || '',
+      opponent: matchData.opponent || '',
+      our_score: matchData.our_score || '',
+      opponent_score: matchData.opponent_score || '',
       competition_name: matchData.competition_name || '',
       match_type: matchData.match_type || 'league',
       venue: matchData.venue || '',
@@ -226,26 +243,39 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
             {isAdmin && (
               <button
                 onClick={editMode ? handleDoneEditing : () => setEditMode(true)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  editMode 
-                    ? 'bg-ucla-gold text-black hover:bg-ucla-gold/90' 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  editMode
+                    ? 'bg-ucla-gold text-black hover:bg-ucla-gold/90 hover:shadow-lg'
                     : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
               >
-                {editMode ? '✓ Save & Exit' : '✏️ Edit Scorecard'}
+                {editMode ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    <span>Save & Exit</span>
+                  </>
+                ) : (
+                  <>
+                    <Edit3 className="h-4 w-4" />
+                    <span>Edit Scorecard</span>
+                  </>
+                )}
               </button>
             )}
             
             {/* Result Badge */}
-            <div className={`px-6 py-3 rounded-lg text-xl font-bold ${
+            <div className={`flex items-center gap-2 px-6 py-3 rounded-lg text-xl font-bold shadow-lg ${
               match.result === 'win' ? 'bg-green-600 text-white' :
               match.result === 'loss' ? 'bg-red-600 text-white' :
               match.result === 'tie' ? 'bg-yellow-600 text-black' :
               'bg-gray-600 text-white'
             }`}>
-              {match.result === 'win' ? '🎉 WIN' :
-               match.result === 'loss' ? 'LOSS' :
-               match.result === 'tie' ? 'TIE' : 'N/R'}
+              {match.result === 'win' && <Trophy className="h-6 w-6" />}
+              <span>
+                {match.result === 'win' ? 'WIN' :
+                 match.result === 'loss' ? 'LOSS' :
+                 match.result === 'tie' ? 'TIE' : 'N/R'}
+              </span>
             </div>
           </div>
         </div>
@@ -267,9 +297,10 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
         </div>
         
         {match.notes && (
-          <p className="text-sm text-white/70 mt-4 border-t border-white/20 pt-4">
-            📝 {match.notes}
-          </p>
+          <div className="flex items-start gap-2 text-sm text-white/70 mt-4 border-t border-white/20 pt-4">
+            <FileText className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <p>{match.notes}</p>
+          </div>
         )}
       </div>
 
@@ -278,16 +309,70 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
         <>
           {/* Metadata Editor */}
           <div className="bg-card rounded-lg border border-ucla-gold/30 p-6 mb-8">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>📋</span> Match Details
-                <span className="text-xs font-normal text-muted-foreground">
-                  Edit fields below, then click &quot;Save &amp; Exit&quot; above
-                </span>
+                <FileText className="h-5 w-5 text-ucla-gold" />
+                <span>Match Details</span>
               </h3>
+              <span className="text-xs text-muted-foreground">
+                Edit fields below, then click &quot;Save &amp; Exit&quot; above
+              </span>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Team Names */}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Our Team Name
+                </label>
+                <input
+                  type="text"
+                  value={metadata.our_team_name}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, our_team_name: e.target.value }))}
+                  placeholder="e.g., UCLA"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Opponent
+                </label>
+                <input
+                  type="text"
+                  value={metadata.opponent}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, opponent: e.target.value }))}
+                  placeholder="e.g., USC Trojans"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
+              </div>
+
+              {/* Scores */}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Our Score
+                </label>
+                <input
+                  type="text"
+                  value={metadata.our_score}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, our_score: e.target.value }))}
+                  placeholder="e.g., 156/7"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Opponent Score
+                </label>
+                <input
+                  type="text"
+                  value={metadata.opponent_score}
+                  onChange={(e) => setMetadata(prev => ({ ...prev, opponent_score: e.target.value }))}
+                  placeholder="e.g., 145/9"
+                  className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
+                />
+              </div>
+
+              {/* Match Details */}
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">
                   Tournament/Competition
@@ -379,9 +464,10 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
           {/* Batting Scorecard - Read Only */}
           <div className="bg-card rounded-lg border border-border overflow-hidden">
             <div className="bg-ucla-blue px-4 py-3">
-              <h2 className="text-lg font-bold text-white">
-                {ourTeam} Batting
-                {match.our_score && <span className="ml-2 text-ucla-gold">{match.our_score}</span>}
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                <span>{ourTeam} Batting</span>
+                {match.our_score && <span className="text-ucla-gold">{match.our_score}</span>}
               </h2>
             </div>
             
@@ -417,12 +503,12 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                           )}
                         >
                           <td className="px-4 py-3">
-                            <Link 
+                            <Link
                               href={`/players/${perf.player?.id}`}
                               className="flex items-center gap-3 hover:text-ucla-gold transition-colors"
                             >
                               <div className={cn(
-                                'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold',
+                                'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-md',
                                 playerIsUnclaimed ? 'bg-orange-600' : 'bg-ucla-blue'
                               )}>
                                 {playerIsUnclaimed ? '?' : getInitials(perf.player?.name || 'UN')}
@@ -431,7 +517,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                                 'font-medium',
                                 playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                               )}>
-                                {playerIsUnclaimed ? '❓ ' : ''}{displayPlayerName(perf.player?.name)}
+                                {displayPlayerName(perf.player?.name)}
                                 {perf.not_out && <span className="text-ucla-gold">*</span>}
                               </span>
                             </Link>
@@ -483,9 +569,11 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
 
           {/* Bowling Scorecard - Read Only (No totals footer) */}
           <div className="bg-card rounded-lg border border-border overflow-hidden">
-            <div className="bg-green-700 px-4 py-3">
-              <h2 className="text-lg font-bold text-white">
-                {ourTeam} Bowling vs {match.opponent}&apos;s {match.opponent_score || '-'}
+            <div className="bg-ucla-blue px-4 py-3">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                <span>{ourTeam} Bowling</span>
+                <span className="text-ucla-gold">vs {match.opponent}&apos;s {match.opponent_score || '-'}</span>
               </h2>
             </div>
             
@@ -521,13 +609,13 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                           )}
                         >
                           <td className="px-4 py-3">
-                            <Link 
+                            <Link
                               href={`/players/${perf.player?.id}`}
-                              className="flex items-center gap-3 hover:text-green-400 transition-colors"
+                              className="flex items-center gap-3 hover:text-ucla-gold transition-colors"
                             >
                               <div className={cn(
-                                'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold',
-                                playerIsUnclaimed ? 'bg-orange-600' : 'bg-green-700'
+                                'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-md',
+                                playerIsUnclaimed ? 'bg-orange-600' : 'bg-ucla-blue'
                               )}>
                                 {playerIsUnclaimed ? '?' : getInitials(perf.player?.name || 'UN')}
                               </div>
@@ -535,7 +623,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                                 'font-medium',
                                 playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                               )}>
-                                {playerIsUnclaimed ? '❓ ' : ''}{displayPlayerName(perf.player?.name)}
+                                {displayPlayerName(perf.player?.name)}
                               </span>
                             </Link>
                           </td>
@@ -557,10 +645,11 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
           {/* Fielding Summary - Read Only */}
           {match.fieldingPerformances.length > 0 && (
             <div className="bg-card rounded-lg border border-border overflow-hidden">
-              <div className="bg-purple-700 px-4 py-3">
-                <h2 className="text-lg font-bold text-white">
-                  {ourTeam} Fielding
-                  <span className="ml-2 text-purple-300">
+              <div className="bg-ucla-blue px-4 py-3">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Hand className="h-5 w-5" />
+                  <span>{ourTeam} Fielding</span>
+                  <span className="text-ucla-gold">
                     {fieldingTotals.catches + fieldingTotals.runOuts + fieldingTotals.stumpings} dismissals
                   </span>
                 </h2>
@@ -592,13 +681,13 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                             )}
                           >
                             <td className="px-4 py-3">
-                              <Link 
+                              <Link
                                 href={`/players/${perf.player?.id}`}
-                                className="flex items-center gap-3 hover:text-purple-400 transition-colors"
+                                className="flex items-center gap-3 hover:text-ucla-gold transition-colors"
                               >
                                 <div className={cn(
-                                  'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold',
-                                  playerIsUnclaimed ? 'bg-orange-600' : 'bg-purple-700'
+                                  'w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-md',
+                                  playerIsUnclaimed ? 'bg-orange-600' : 'bg-ucla-blue'
                                 )}>
                                   {playerIsUnclaimed ? '?' : getInitials(perf.player?.name || 'UN')}
                                 </div>
@@ -606,14 +695,14 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
                                   'font-medium',
                                   playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                                 )}>
-                                  {playerIsUnclaimed ? '❓ ' : ''}{displayPlayerName(perf.player?.name)}
+                                  {displayPlayerName(perf.player?.name)}
                                 </span>
                               </Link>
                             </td>
                             <td className="px-4 py-3 text-center">{perf.catches}</td>
                             <td className="px-4 py-3 text-center">{perf.run_outs}</td>
                             <td className="px-4 py-3 text-center">{perf.stumpings}</td>
-                            <td className="px-4 py-3 text-center font-bold text-purple-400">
+                            <td className="px-4 py-3 text-center font-bold text-ucla-gold">
                               {perf.catches + perf.run_outs + perf.stumpings}
                             </td>
                           </tr>

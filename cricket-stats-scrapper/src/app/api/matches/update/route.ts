@@ -18,6 +18,10 @@ export async function POST(request: NextRequest) {
     
     // Allowed fields to update
     const allowedFields = [
+      'our_team_name',
+      'opponent',
+      'our_score',
+      'opponent_score',
       'competition_name',
       'match_type',
       'venue',
