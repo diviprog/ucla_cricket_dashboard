@@ -12,15 +12,74 @@ import {
   updateFieldingSeasonStats,
 } from '@/lib/services/stats-service'
 import { ParsedMatchData } from '@/types/models'
+import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { html, metadata } = body
-    
-    if (!html) {
+    let html: string
+    let metadata: any = {}
+
+    // Check if request is FormData (file upload) or JSON
+    const contentType = request.headers.get('content-type') || ''
+
+    if (contentType.includes('multipart/form-data')) {
+      // Handle file upload (new webarchive support)
+      const formData = await request.formData()
+      const file = formData.get('file') as File
+
+      if (!file) {
+        return NextResponse.json(
+          { success: false, error: 'No file provided' },
+          { status: 400 }
+        )
+      }
+
+      // Extract metadata from form if provided
+      const metadataStr = formData.get('metadata') as string
+      if (metadataStr) {
+        try {
+          metadata = JSON.parse(metadataStr)
+        } catch {
+          // Ignore invalid metadata
+        }
+      }
+
+      // Store filename in metadata
+      metadata.filename = file.name
+
+      // Check if it's a webarchive file
+      if (isWebArchive(file.name)) {
+        try {
+          const arrayBuffer = await file.arrayBuffer()
+          html = await extractHTMLFromWebArchive(arrayBuffer)
+        } catch (error) {
+          const errorMsg = error instanceof Error ? getWebArchiveErrorMessage(error) : 'Failed to process webarchive file'
+          return NextResponse.json(
+            { success: false, error: errorMsg },
+            { status: 400 }
+          )
+        }
+      } else {
+        // Regular HTML file
+        html = await file.text()
+      }
+    } else {
+      // Handle JSON request (existing behavior)
+      const body = await request.json()
+      html = body.html
+      metadata = body.metadata || {}
+
+      if (!html) {
+        return NextResponse.json(
+          { success: false, error: 'No HTML content provided' },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (!html || html.trim().length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No HTML content provided' },
+        { success: false, error: 'HTML content is empty' },
         { status: 400 }
       )
     }
