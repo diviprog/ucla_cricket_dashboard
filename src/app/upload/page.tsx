@@ -6,6 +6,7 @@ import { useDropzone } from 'react-dropzone'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { AdminGuard } from '@/components/admin-guard'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface ParsedFile {
   id: string // unique ID for each file
@@ -45,6 +46,7 @@ export default function UploadPage() {
   const [matchGroups, setMatchGroups] = useState<MatchGroup[]>([])
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Auto-group files when they're all parsed
   useEffect(() => {
@@ -132,24 +134,25 @@ export default function UploadPage() {
 
   const groupFilesByMatch = (currentFiles: ParsedFile[]) => {
     const parsedFiles = currentFiles.filter(f => f.status === 'parsed' && f.matchInfo)
-    
+
     if (parsedFiles.length === 0) {
       setMatchGroups([])
+      setExpandedGroups(new Set())
       return
     }
-    
+
     const groups = new Map<string, ParsedFile[]>()
-    
+
     parsedFiles.forEach(file => {
       if (!file.matchInfo) return
       const key = `${file.matchInfo.date}_${[...file.matchInfo.teams].sort().join('_')}`
-      
+
       if (!groups.has(key)) {
         groups.set(key, [])
       }
       groups.get(key)!.push(file)
     })
-    
+
     const newMatchGroups: MatchGroup[] = Array.from(groups.entries()).map(([key, groupFiles]) => ({
       key,
       date: groupFiles[0].matchInfo!.date,
@@ -162,8 +165,25 @@ export default function UploadPage() {
         notes: '',
       },
     }))
-    
+
     setMatchGroups(newMatchGroups)
+
+    // Auto-expand the first match
+    if (newMatchGroups.length > 0) {
+      setExpandedGroups(new Set([newMatchGroups[0].key]))
+    }
+  }
+
+  const toggleGroupExpanded = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
   }
 
   const updateMatchMetadata = (key: string, field: string, value: string) => {
@@ -341,26 +361,45 @@ export default function UploadPage() {
           <h2 className="text-xl font-semibold text-white mb-4">
             Detected Matches ({matchGroups.length})
           </h2>
-          <div className="space-y-6">
-            {matchGroups.map((group) => (
-              <div 
-                key={group.key}
-                className="bg-card p-6 rounded-lg border border-border"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">
-                      {group.teams[0]} vs {group.teams[1]}
-                    </h3>
-                    <p className="text-muted-foreground">{group.date}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {group.files.length} file(s) detected
-                    </p>
-                  </div>
-                </div>
+          <div className="space-y-3">
+            {matchGroups.map((group, index) => {
+              const isExpanded = expandedGroups.has(group.key)
+              return (
+                <div
+                  key={group.key}
+                  className="bg-card rounded-lg border border-border overflow-hidden"
+                >
+                  {/* Collapsible Header */}
+                  <button
+                    onClick={() => toggleGroupExpanded(group.key)}
+                    className="w-full flex items-center justify-between p-4 hover:bg-background/50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-ucla-gold/20 flex items-center justify-center">
+                        <span className="text-sm font-semibold text-ucla-gold">
+                          {index + 1}
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-white">
+                          {group.teams[0]} vs {group.teams[1]}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          {group.date} • {group.files.length} file(s)
+                        </p>
+                      </div>
+                    </div>
+                    {isExpanded ? (
+                      <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </button>
 
-                {/* Metadata Form */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  {/* Metadata Form (collapsible) */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-border">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                   <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1">
                       Match Type
@@ -416,8 +455,11 @@ export default function UploadPage() {
                     />
                   </div>
                 </div>
-              </div>
-            ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           {/* Import Button */}

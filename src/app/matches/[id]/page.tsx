@@ -387,17 +387,17 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">
-                  Match Stage
+                  Match Type
                 </label>
                 <select
                   value={metadata.match_type}
                   onChange={(e) => setMetadata(prev => ({ ...prev, match_type: e.target.value }))}
                   className="w-full px-3 py-2 bg-background border border-border rounded text-white focus:border-ucla-gold focus:outline-none"
                 >
-                  <option value="league">League Stage</option>
-                  <option value="playoff">Semi-Final</option>
-                  <option value="tournament">Final</option>
+                  <option value="league">League</option>
+                  <option value="playoff">Playoff</option>
                   <option value="friendly">Friendly</option>
+                  <option value="tournament">Tournament</option>
                 </select>
               </div>
               <div>
