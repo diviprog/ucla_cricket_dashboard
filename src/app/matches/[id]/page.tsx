@@ -48,6 +48,33 @@ function parseScoreTotal(score: string | null): number | null {
   return m ? parseInt(m[1]) : null
 }
 
+// Guest badge, and for intrasquad matches the team name the player played for
+function PlayerTags({ perf, match }: { perf: any; match: MatchData }) {
+  const side =
+    match.match_type === 'intrasquad' && (perf.team_side === 0 || perf.team_side === 1)
+      ? perf.team_side === 0
+        ? match.our_team_name || 'Team A'
+        : match.opponent
+      : null
+  return (
+    <>
+      {side && (
+        <span className="ml-2 px-1.5 py-0.5 rounded bg-purple-600/30 text-purple-300 text-xs font-medium not-italic">
+          {side}
+        </span>
+      )}
+      {perf.player?.is_ucla === false && (
+        <span
+          className="ml-2 px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 text-xs font-medium not-italic"
+          title="Guest: not counted in individual stats"
+        >
+          Guest
+        </span>
+      )}
+    </>
+  )
+}
+
 export default function MatchDetailPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params)
   const router = useRouter()
@@ -94,7 +121,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
       .from('batting_performances')
       .select(`
         *,
-        player:players(id, name)
+        player:players(*)
       `)
       .eq('match_id', params.id)
       .order('batting_position')
@@ -104,7 +131,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
       .from('bowling_performances')
       .select(`
         *,
-        player:players(id, name)
+        player:players(*)
       `)
       .eq('match_id', params.id)
       .order('created_at')
@@ -114,15 +141,21 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
       .from('fielding_performances')
       .select(`
         *,
-        player:players(id, name)
+        player:players(*)
       `)
       .eq('match_id', params.id)
 
+    // Intrasquad: keep each side's rows together (team_side 0 first)
+    const bySide = (rows: any[] | null) =>
+      matchData.match_type === 'intrasquad'
+        ? [...(rows || [])].sort((a, b) => (a.team_side ?? 0) - (b.team_side ?? 0))
+        : rows || []
+
     const fullMatch = {
       ...matchData,
-      battingPerformances: battingPerformances || [],
-      bowlingPerformances: bowlingPerformances || [],
-      fieldingPerformances: fieldingPerformances || [],
+      battingPerformances: bySide(battingPerformances),
+      bowlingPerformances: bySide(bowlingPerformances),
+      fieldingPerformances: bySide(fieldingPerformances),
     }
 
     setMatch(fullMatch)
@@ -215,6 +248,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
   }
 
   const ourTeam = match.our_team_name || 'UCLA'
+  const isIntrasquad = match.match_type === 'intrasquad'
 
   // Format extras string
   const extrasBreakdownParts = []
@@ -274,7 +308,8 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
             }`}>
               {match.result === 'win' && <Trophy className="h-6 w-6" />}
               <span>
-                {match.result === 'win' ? 'WIN' :
+                {isIntrasquad ? 'INTRASQUAD' :
+                 match.result === 'win' ? 'WIN' :
                  match.result === 'loss' ? 'LOSS' :
                  match.result === 'tie' ? 'TIE' : 'N/R'}
               </span>
@@ -400,6 +435,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
                   <option value="playoff">Playoff</option>
                   <option value="friendly">Friendly</option>
                   <option value="tournament">Tournament</option>
+                  <option value="intrasquad">Intrasquad</option>
                 </select>
               </div>
               <div>
@@ -468,7 +504,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
             <div className="bg-ucla-blue px-4 py-3">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                <span>{ourTeam} Batting</span>
+                <span>{isIntrasquad ? 'Batting' : `${ourTeam} Batting`}</span>
                 {match.our_score && <span className="text-ucla-gold">{match.our_score}</span>}
               </h2>
             </div>
@@ -521,6 +557,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
                               )}>
                                 {displayPlayerName(perf.player?.name)}
                                 {perf.not_out && <span className="text-ucla-gold">*</span>}
+                                <PlayerTags perf={perf} match={match} />
                               </span>
                             </Link>
                           </td>
@@ -574,7 +611,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
             <div className="bg-ucla-blue px-4 py-3">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Target className="h-5 w-5" />
-                <span>{ourTeam} Bowling</span>
+                <span>{isIntrasquad ? 'Bowling' : `${ourTeam} Bowling`}</span>
                 <span className="text-ucla-gold">vs {match.opponent}&apos;s {match.opponent_score || '-'}</span>
               </h2>
             </div>
@@ -626,6 +663,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
                                 playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                               )}>
                                 {displayPlayerName(perf.player?.name)}
+                                <PlayerTags perf={perf} match={match} />
                               </span>
                             </Link>
                           </td>
@@ -650,7 +688,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
               <div className="bg-ucla-blue px-4 py-3">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                   <Hand className="h-5 w-5" />
-                  <span>{ourTeam} Fielding</span>
+                  <span>{isIntrasquad ? 'Fielding' : `${ourTeam} Fielding`}</span>
                   <span className="text-ucla-gold">
                     {fieldingTotals.catches + fieldingTotals.runOuts + fieldingTotals.stumpings} dismissals
                   </span>
@@ -698,6 +736,7 @@ export default function MatchDetailPage(props: { params: Promise<{ id: string }>
                                   playerIsUnclaimed ? 'text-orange-400 italic' : 'text-white'
                                 )}>
                                   {displayPlayerName(perf.player?.name)}
+                                  <PlayerTags perf={perf} match={match} />
                                 </span>
                               </Link>
                             </td>

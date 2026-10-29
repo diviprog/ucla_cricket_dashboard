@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
 import ExcelJS from 'exceljs'
+import { describeDbError, isMissingMigration } from '@/lib/supabase/migration-guard'
 
 // GET /api/export?format=xlsx|csv&seasonId=xxx
 export async function GET(request: NextRequest) {
@@ -29,38 +30,49 @@ export async function GET(request: NextRequest) {
       .order('date')
     
     // Get batting stats
-    const { data: battingStats } = await supabase
+    const { data: battingStats, error: battingStatsError } = await supabase
       .from('player_season_stats')
       .select(`
         *,
-        player:players(name)
+        player:players!inner(name, is_ucla)
       `)
       .eq('season_id', season.id)
+      .eq('player.is_ucla', true) // guests are not in the player sheets
       .gt('total_runs', 0)
       .order('total_runs', { ascending: false })
     
     // Get bowling stats
-    const { data: bowlingStats } = await supabase
+    const { data: bowlingStats, error: bowlingStatsError } = await supabase
       .from('bowling_season_stats')
       .select(`
         *,
-        player:players(name)
+        player:players!inner(name, is_ucla)
       `)
       .eq('season_id', season.id)
+      .eq('player.is_ucla', true) // guests are not in the player sheets
       .gt('total_balls', 0)
       .order('total_wickets', { ascending: false })
     
     // Get fielding stats
-    const { data: fieldingStats } = await supabase
+    const { data: fieldingStats, error: fieldingStatsError } = await supabase
       .from('fielding_season_stats')
       .select(`
         *,
-        player:players(name)
+        player:players!inner(name, is_ucla)
       `)
       .eq('season_id', season.id)
+      .eq('player.is_ucla', true) // guests are not in the player sheets
       .gt('total_dismissals', 0)
       .order('total_dismissals', { ascending: false })
     
+    const statsError = battingStatsError || bowlingStatsError || fieldingStatsError
+    if (statsError) {
+      return NextResponse.json(
+        { error: describeDbError(statsError) },
+        { status: isMissingMigration(statsError) ? 503 : 500 }
+      )
+    }
+
     // Build export data
     const workbook = new ExcelJS.Workbook()
     workbook.creator = 'UCLA Cricket Stats'

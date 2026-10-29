@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { matchPlayerName } from '@/lib/parsers/player-resolver'
 import type { Player } from '@/types/models'
 
-const p = (id: string, name: string): Player => ({ id, name, created_at: '2025-01-01' })
+const p = (id: string, name: string): Player => ({ id, name, is_ucla: true, created_at: '2025-01-01' })
 
 // Real roster names, including the risky prefix pairs
 const roster: Player[] = [

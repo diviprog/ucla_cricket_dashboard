@@ -10,6 +10,7 @@ interface Match {
   id: string
   date: string
   opponent: string
+  our_team_name: string | null
   result: string
   our_score: string | null
   opponent_score: string | null
@@ -144,7 +145,14 @@ export default function MatchesPage() {
                   
                   <div>
                     <h3 className="text-lg font-semibold text-white">
-                      vs {match.opponent}
+                      {match.match_type === 'intrasquad'
+                        ? `${match.our_team_name || 'Team A'} vs ${match.opponent}`
+                        : `vs ${match.opponent}`}
+                      {match.match_type === 'intrasquad' && (
+                        <span className="ml-2 align-middle px-2 py-0.5 rounded bg-purple-600/30 text-purple-300 text-xs font-medium">
+                          Intrasquad
+                        </span>
+                      )}
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       {formatDate(match.date)} • {match.competition_name || 'League Match'}

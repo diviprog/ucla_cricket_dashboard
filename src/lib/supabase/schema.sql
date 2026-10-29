@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS players (
   contact_info JSONB,
   year VARCHAR(20),
   major VARCHAR(100),
+  is_ucla BOOLEAN NOT NULL DEFAULT TRUE, -- FALSE = guest: stored, hidden from individual stats
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -44,7 +45,7 @@ CREATE TABLE IF NOT EXISTS matches (
   date DATE NOT NULL,
   opponent VARCHAR(100) NOT NULL,
   venue VARCHAR(200),
-  match_type VARCHAR(20) NOT NULL DEFAULT 'league', -- league, playoff, friendly, tournament
+  match_type VARCHAR(20) NOT NULL DEFAULT 'league', -- league, playoff, friendly, tournament, intrasquad
   competition_name VARCHAR(200),
   result VARCHAR(20) NOT NULL DEFAULT 'no_result', -- win, loss, tie, no_result
   our_team_name VARCHAR(100), -- The team name UCLA played under
@@ -90,6 +91,7 @@ CREATE TABLE IF NOT EXISTS batting_performances (
   bowled_lbw BOOLEAN NOT NULL DEFAULT FALSE,
   dismissal_text VARCHAR(200),
   batting_position INTEGER NOT NULL DEFAULT 0,
+  team_side SMALLINT, -- 0 = our_team_name, 1 = opponent (labels intrasquad sides)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(match_id, player_id)
 );
@@ -152,6 +154,7 @@ CREATE TABLE IF NOT EXISTS bowling_performances (
   wides INTEGER NOT NULL DEFAULT 0,
   no_balls INTEGER NOT NULL DEFAULT 0,
   economy DECIMAL(5, 2) NOT NULL DEFAULT 0,
+  team_side SMALLINT, -- 0 = our_team_name, 1 = opponent (labels intrasquad sides)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(match_id, player_id)
 );
@@ -194,6 +197,7 @@ CREATE TABLE IF NOT EXISTS fielding_performances (
   catches INTEGER NOT NULL DEFAULT 0,
   run_outs INTEGER NOT NULL DEFAULT 0,
   stumpings INTEGER NOT NULL DEFAULT 0,
+  team_side SMALLINT, -- 0 = our_team_name, 1 = opponent (labels intrasquad sides)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(match_id, player_id)
 );

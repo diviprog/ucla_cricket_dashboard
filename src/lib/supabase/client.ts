@@ -28,6 +28,7 @@ export type Database = {
           contact_info: Record<string, unknown> | null
           year: string | null
           major: string | null
+          is_ucla: boolean
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['players']['Row'], 'id' | 'created_at'>

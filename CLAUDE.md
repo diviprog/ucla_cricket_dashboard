@@ -82,16 +82,17 @@ Database: run `src/lib/supabase/schema.sql`, then `src/lib/supabase/rls.sql`, in
 
 ### Innings and Team Detection
 
-**Our Team vs Opponent:**
-- Parser identifies "our" team (default: "UCLA") via `metadata.ourTeamName` or name matching
-- `ourInnings` = innings where batting team name contains our team name
-- `opponentInnings` = other innings
-- Our batting performances come from `ourInnings.battingEntries`
-- Our bowling performances come from `opponentInnings.bowlingEntries` (when opponent bats, we bowl)
-- Our fielding performances extracted from opponent's dismissals
+**Our Team vs Opponent (`src/lib/import/import-plan.ts`):**
+- Side i = the team that batted in innings i. Innings i's bowling table, fielders and bowler wicket types belong to the fielding side (1 - i)
+- `/api/parse` returns both sides' players with roles and a roster suggestion (`matchPlayerName`)
+- The upload page asks which side is us: Team A, Team B or Both (intrasquad), then a decision per scorecard name: link / new UCLA player / guest
+- `/api/matches/import` takes `ourSide` + `playerDecisions` and writes what the pure `buildImportPlan()` returns; it 400s on a missing side or decision
+- Intrasquad: both innings imported, `match_type='intrasquad'`, `result='no_result'`; excluded from the team record/totals, counted in individual stats
+- Guests (`players.is_ucla = false`): performances stored, hidden from leaderboards, dashboard top performers/player count and Excel player sheets (filtered at query time)
+- Migration `src/lib/supabase/migrations/001-guests-intrasquad.sql` must run before deploying this code
 
 **Result Calculation:**
-- Result determined by comparing `ourInnings.total` vs `opponentInnings.total`
+- Result determined by comparing our innings total vs the other innings total
 - Ignores unreliable result text from parsed HTML
 - Values: 'win', 'loss', 'tie', 'no_result'
 

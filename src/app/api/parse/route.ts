@@ -4,6 +4,11 @@ import { parseCricClubsScorecard, ParseError } from '@/lib/parsers/cricclubs-par
 import { parseCricCenterScorecard } from '@/lib/parsers/criccenter-parser'
 import { detectScorecardFormat } from '@/lib/parsers/format-detector'
 import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
+import { matchPlayerName } from '@/lib/parsers/player-resolver'
+import { extractSides, type PlayerSuggestion } from '@/lib/import/import-plan'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { describeDbError } from '@/lib/supabase/migration-guard'
+import type { Player } from '@/types/models'
 
 export async function POST(request: NextRequest) {
   const denied = await requireAdmin(request)
@@ -96,6 +101,49 @@ export async function POST(request: NextRequest) {
       ? parseCricClubsScorecard(html)
       : parseCricCenterScorecard(html)
     
+    // Who played for which team, with a suggested roster match for each name
+    let sides
+    try {
+      sides = extractSides(parsedData)
+    } catch (e) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'No innings found in the scorecard',
+          errorCode: 'NO_BATTING_DATA',
+          details: e instanceof Error ? e.message : 'The scorecard has no innings tables.',
+        },
+        { status: 400 }
+      )
+    }
+
+    const supabase = getSupabaseAdmin()
+    const [{ data: players, error: playersError }, { data: aliases, error: aliasesError }] = await Promise.all([
+      supabase.from('players').select('id, name, is_ucla'),
+      supabase.from('player_aliases').select('alias, player_id'),
+    ])
+    if (playersError || aliasesError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: describeDbError(playersError || aliasesError, 'Failed to load players'),
+          errorCode: 'ROSTER_LOAD_FAILED',
+        },
+        { status: 500 }
+      )
+    }
+    const aliasMap = new Map((aliases || []).map(a => [a.alias.toLowerCase(), a.player_id as string]))
+    const playerById = new Map((players || []).map(p => [p.id as string, p]))
+    const suggest = (name: string): PlayerSuggestion => {
+      const m = matchPlayerName(name, (players || []) as Player[], aliasMap)
+      if (!m) return { type: 'new' }
+      return { type: 'existing', playerId: m.playerId, playerName: m.playerName, isUcla: playerById.get(m.playerId)?.is_ucla !== false }
+    }
+    const teamSides = sides.teams.map((team, i) => ({
+      team,
+      players: sides.players[i].map(p => ({ ...p, suggestion: suggest(p.name) })),
+    }))
+
     // Add summary of what was parsed
     const battingCount = parsedData.innings.reduce((sum, inn) => sum + inn.battingEntries.length, 0)
     const bowlingCount = parsedData.innings.reduce((sum, inn) => sum + inn.bowlingEntries.length, 0)
@@ -110,6 +158,8 @@ export async function POST(request: NextRequest) {
         innings: parsedData.innings.length,
         battingEntries: battingCount,
         bowlingEntries: bowlingCount,
+        sides: teamSides,
+        warnings: sides.warnings,
       },
       filename,
     })

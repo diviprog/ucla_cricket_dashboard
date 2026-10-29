@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { describeDbError, isMissingMigration } from '@/lib/supabase/migration-guard'
+
+class QueryError extends Error {
+  constructor(public dbError: { code?: string; message?: string }) {
+    super(describeDbError(dbError))
+  }
+}
+function check(error: { code?: string; message?: string } | null) {
+  if (error) throw new QueryError(error)
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +42,7 @@ export async function GET(request: NextRequest) {
     // Build match query with optional competition filter
     let matchQuery = supabase
       .from('matches')
-      .select('id, result, date, opponent, our_score, opponent_score, competition_name')
+      .select('id, result, date, opponent, our_team_name, our_score, opponent_score, competition_name, match_type')
       .eq('season_id', targetSeasonId)
       .order('date', { ascending: false })
 
@@ -40,95 +50,54 @@ export async function GET(request: NextRequest) {
       matchQuery = matchQuery.eq('competition_name', competitionName)
     }
 
-    const { data: matches } = await matchQuery
+    const { data: matches, error: matchesError } = await matchQuery
+    check(matchesError)
 
+    // Team numbers: real matches only (intrasquad excluded), every player on our side (guests included)
+    const teamMatches = (matches || []).filter(m => m.match_type !== 'intrasquad')
+    const teamMatchIds = teamMatches.map(m => m.id)
+    const stats = await calculateTeamStats(supabase, teamMatches, teamMatchIds)
+
+    // Individual numbers: intrasquad included, guests excluded (players.is_ucla)
     const matchIds = matches?.map(m => m.id) || []
 
     // If filtering by competition, we need to calculate stats from performances
     // instead of using pre-computed season stats
-    if (competitionName && competitionName !== 'all' && matchIds.length > 0) {
-      // Get batting performances for these matches
-      const { data: battingPerfs } = await supabase
-        .from('batting_performances')
-        .select('*, player:players(id, name)')
-        .in('match_id', matchIds)
+    if (competitionName && competitionName !== 'all') {
+      if (matchIds.length === 0) {
+        return NextResponse.json({ success: true, stats, topPerformers: getEmptyPerformers(), recentMatches: [] })
+      }
+      const uclaOnly = 'player:players!inner(id, name, is_ucla)'
+      const [batting, bowling, fielding] = await Promise.all([
+        supabase.from('batting_performances').select(`*, ${uclaOnly}`).in('match_id', matchIds).eq('player.is_ucla', true),
+        supabase.from('bowling_performances').select(`*, ${uclaOnly}`).in('match_id', matchIds).eq('player.is_ucla', true),
+        supabase.from('fielding_performances').select(`*, ${uclaOnly}`).in('match_id', matchIds).eq('player.is_ucla', true),
+      ])
+      check(batting.error || bowling.error || fielding.error)
 
-      // Get bowling performances for these matches
-      const { data: bowlingPerfs } = await supabase
-        .from('bowling_performances')
-        .select('*, player:players(id, name)')
-        .in('match_id', matchIds)
-
-      // Get fielding performances for these matches
-      const { data: fieldingPerfs } = await supabase
-        .from('fielding_performances')
-        .select('*, player:players(id, name)')
-        .in('match_id', matchIds)
-
-      const stats = calculateStatsFromPerformances(
-        matches || [],
-        battingPerfs || [],
-        bowlingPerfs || [],
-        fieldingPerfs || []
-      )
-
-      const topPerformers = calculateTopPerformers(
-        battingPerfs || [],
-        bowlingPerfs || [],
-        fieldingPerfs || []
-      )
+      const topPerformers = calculateTopPerformers(batting.data || [], bowling.data || [], fielding.data || [])
 
       return NextResponse.json({
         success: true,
-        stats,
+        stats: { ...stats, totalPlayers: new Set((batting.data || []).map(p => p.player_id)).size },
         topPerformers,
         recentMatches: (matches || []).slice(0, 5),
       })
     }
 
-    // Use pre-computed season stats for full season view
-    const { data: battingStats } = await supabase
-      .from('player_season_stats')
-      .select('*, player:players(id, name)')
-      .eq('season_id', targetSeasonId)
+    // Use pre-computed season stats for full season view, UCLA players only
+    const uclaOnly = 'player:players!inner(id, name, is_ucla)'
+    const [batting, bowling, fielding] = await Promise.all([
+      supabase.from('player_season_stats').select(`*, ${uclaOnly}`).eq('season_id', targetSeasonId).eq('player.is_ucla', true),
+      supabase.from('bowling_season_stats').select(`*, ${uclaOnly}`).eq('season_id', targetSeasonId).eq('player.is_ucla', true),
+      supabase.from('fielding_season_stats').select(`*, ${uclaOnly}`).eq('season_id', targetSeasonId).eq('player.is_ucla', true),
+    ])
+    check(batting.error || bowling.error || fielding.error)
+    const battingStats = batting.data
+    const bowlingStats = bowling.data
+    const fieldingStats = fielding.data
 
-    const { data: bowlingStats } = await supabase
-      .from('bowling_season_stats')
-      .select('*, player:players(id, name)')
-      .eq('season_id', targetSeasonId)
-
-    const { data: fieldingStats } = await supabase
-      .from('fielding_season_stats')
-      .select('*, player:players(id, name)')
-      .eq('season_id', targetSeasonId)
-
-    const totalMatches = matches?.length || 0
-    const wins = matches?.filter(m => m.result === 'win').length || 0
-    const losses = matches?.filter(m => m.result === 'loss').length || 0
-    const ties = matches?.filter(m => m.result === 'tie').length || 0
-
-    const totalRuns = battingStats?.reduce((sum, s) => sum + s.total_runs, 0) || 0
-    const totalWickets = bowlingStats?.reduce((sum, s) => sum + s.total_wickets, 0) || 0
-    const totalCatches = fieldingStats?.reduce((sum, s) => sum + s.total_catches, 0) || 0
-    const totalFours = battingStats?.reduce((sum, s) => sum + s.fours, 0) || 0
-    const totalSixes = battingStats?.reduce((sum, s) => sum + s.sixes, 0) || 0
-    const totalPlayers = battingStats?.filter(s => s.total_runs > 0).length || 0
-
-    const stats = {
-      totalMatches,
-      wins,
-      losses,
-      ties,
-      winPercentage: totalMatches > 0 ? (wins / totalMatches) * 100 : 0,
-      totalRuns,
-      totalWickets,
-      totalCatches,
-      totalBoundaries: totalFours + totalSixes,
-      totalFours,
-      totalSixes,
-      avgTeamScore: totalMatches > 0 ? totalRuns / totalMatches : 0,
-      totalPlayers,
-    }
+    stats.totalPlayers = battingStats?.filter(s => s.total_runs > 0).length || 0
 
     // Calculate top performers from season stats
     const isUnclaimed = (name?: string) => name?.toLowerCase().startsWith('unclaimed') || false
@@ -222,8 +191,14 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error fetching dashboard stats:', error)
+    if (error instanceof QueryError && isMissingMigration(error.dbError)) {
+      return NextResponse.json(
+        { success: false, errorCode: 'MIGRATION_REQUIRED', error: error.message },
+        { status: 503 }
+      )
+    }
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch stats' },
+      { success: false, error: error instanceof Error ? error.message : 'Failed to fetch stats' },
       { status: 500 }
     )
   }
@@ -259,23 +234,36 @@ function getEmptyPerformers() {
   }
 }
 
-function calculateStatsFromPerformances(
-  matches: any[],
-  battingPerfs: any[],
-  bowlingPerfs: any[],
-  fieldingPerfs: any[]
+async function calculateTeamStats(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  teamMatches: { result: string }[],
+  teamMatchIds: string[]
 ) {
-  const totalMatches = matches.length
-  const wins = matches.filter(m => m.result === 'win').length
-  const losses = matches.filter(m => m.result === 'loss').length
-  const ties = matches.filter(m => m.result === 'tie').length
+  let battingPerfs: { runs: number; fours: number; sixes: number }[] = []
+  let bowlingPerfs: { wickets: number }[] = []
+  let fieldingPerfs: { catches: number }[] = []
+  if (teamMatchIds.length > 0) {
+    const [batting, bowling, fielding] = await Promise.all([
+      supabase.from('batting_performances').select('runs, fours, sixes').in('match_id', teamMatchIds),
+      supabase.from('bowling_performances').select('wickets').in('match_id', teamMatchIds),
+      supabase.from('fielding_performances').select('catches').in('match_id', teamMatchIds),
+    ])
+    check(batting.error || bowling.error || fielding.error)
+    battingPerfs = batting.data || []
+    bowlingPerfs = bowling.data || []
+    fieldingPerfs = fielding.data || []
+  }
+
+  const totalMatches = teamMatches.length
+  const wins = teamMatches.filter(m => m.result === 'win').length
+  const losses = teamMatches.filter(m => m.result === 'loss').length
+  const ties = teamMatches.filter(m => m.result === 'tie').length
 
   const totalRuns = battingPerfs.reduce((sum, p) => sum + p.runs, 0)
   const totalWickets = bowlingPerfs.reduce((sum, p) => sum + p.wickets, 0)
   const totalCatches = fieldingPerfs.reduce((sum, p) => sum + p.catches, 0)
   const totalFours = battingPerfs.reduce((sum, p) => sum + p.fours, 0)
   const totalSixes = battingPerfs.reduce((sum, p) => sum + p.sixes, 0)
-  const playerIds = new Set(battingPerfs.map(p => p.player_id))
 
   return {
     totalMatches,
@@ -290,7 +278,7 @@ function calculateStatsFromPerformances(
     totalFours,
     totalSixes,
     avgTeamScore: totalMatches > 0 ? totalRuns / totalMatches : 0,
-    totalPlayers: playerIds.size,
+    totalPlayers: 0, // individual count, filled in by the caller (UCLA players only)
   }
 }
 
