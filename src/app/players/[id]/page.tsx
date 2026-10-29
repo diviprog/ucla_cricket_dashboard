@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
@@ -28,7 +28,8 @@ interface PlayerData {
   bowlingWicketBreakdown?: DismissalBreakdown[]
 }
 
-export default function PlayerProfilePage({ params }: { params: { id: string } }) {
+export default function PlayerProfilePage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params)
   const router = useRouter()
   const { isAdmin } = useAuth()
   const [player, setPlayer] = useState<PlayerData | null>(null)

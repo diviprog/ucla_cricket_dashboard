@@ -60,8 +60,9 @@ export function calculateBattingStats(performances: BattingPerformance[]): Calcu
  */
 export function calculateBowlingStats(performances: BowlingPerformance[]): CalculatedBowlingStats {
   const matchesBowled = new Set(performances.map(p => p.match_id)).size
-  const totalOvers = performances.reduce((sum, p) => sum + p.overs, 0)
   const totalBalls = performances.reduce((sum, p) => sum + p.balls, 0)
+  // Overs in cricket notation (36 balls -> 6.0, 20 balls -> 3.2); never sum decimal overs
+  const totalOvers = Math.floor(totalBalls / 6) + (totalBalls % 6) / 10
   const totalRuns = performances.reduce((sum, p) => sum + p.runs_conceded, 0)
   const totalWickets = performances.reduce((sum, p) => sum + p.wickets, 0)
   const totalMaidens = performances.reduce((sum, p) => sum + p.maidens, 0)
@@ -75,8 +76,8 @@ export function calculateBowlingStats(performances: BowlingPerformance[]): Calcu
   // Strike Rate = Balls / Wickets (balls per wicket)
   const strikeRate = totalWickets > 0 ? totalBalls / totalWickets : 0
   
-  // Economy = Runs / Overs (runs per over)
-  const economy = totalOvers > 0 ? totalRuns / totalOvers : 0
+  // Economy = Runs / Overs (runs per over), computed from balls
+  const economy = totalBalls > 0 ? totalRuns / (totalBalls / 6) : 0
   
   // Dot Percentage = (Dots / Balls) × 100
   const dotPercentage = totalBalls > 0 ? (totalDots / totalBalls) * 100 : 0

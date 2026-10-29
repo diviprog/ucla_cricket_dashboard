@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/server'
 import type { Player, PlayerAlias, MatchPlayerOverride } from '@/types/models'
 
 // Cache for player lookups
-let playerCache: Map<string, Player> | null = null
+let playerCache: Map<string, Player> | null = null // player_id -> player
 let aliasCache: Map<string, string> | null = null // alias -> player_id
 
 /**
@@ -23,8 +23,6 @@ export async function initializePlayerCache(): Promise<void> {
   playerCache = new Map()
   players?.forEach(player => {
     playerCache!.set(player.id, player)
-    // Also index by canonical name (lowercase)
-    playerCache!.set(player.name.toLowerCase(), player)
   })
   
   // Load all aliases
@@ -76,7 +74,6 @@ export async function resolvePlayerName(
   }
   
   const normalizedName = normalizePlayerName(rawName)
-  const lowerName = normalizedName.toLowerCase()
   
   // 1. Check for match-specific override first
   if (matchId) {
@@ -95,42 +92,52 @@ export async function resolvePlayerName(
     }
   }
   
-  // 2. Check alias cache
-  const aliasPlayerId = aliasCache!.get(lowerName)
+  // 2-4. Alias, exact name, first name + last initial
+  return matchPlayerName(normalizedName, Array.from(playerCache!.values()), aliasCache!)
+}
+
+/**
+ * Pure name matcher (no DB). Order:
+ * 1. exact alias (case-insensitive)
+ * 2. exact canonical name (case-insensitive)
+ * 3. first name + last initial ("Naman S" -> "Naman Satija"), only if exactly one player matches
+ * Anything else returns null; the caller creates a new player rather than guessing.
+ */
+export function matchPlayerName(
+  rawName: string,
+  players: Player[],
+  aliasToPlayerId: Map<string, string>
+): { playerId: string; playerName: string } | null {
+  const lowerName = normalizePlayerName(rawName).toLowerCase()
+  if (!lowerName) return null
+  
+  // 1. Exact alias
+  const aliasPlayerId = aliasToPlayerId.get(lowerName)
   if (aliasPlayerId) {
-    const player = playerCache!.get(aliasPlayerId)
+    const player = players.find(p => p.id === aliasPlayerId)
     if (player) {
-      return { playerId: aliasPlayerId, playerName: player.name }
-    }
-  }
-  
-  // 3. Check direct player name match
-  const directMatch = playerCache!.get(lowerName)
-  if (directMatch) {
-    return { playerId: directMatch.id, playerName: directMatch.name }
-  }
-  
-  // 4. Try fuzzy matching (first name only)
-  const firstName = lowerName.split(' ')[0]
-  for (const [key, player] of playerCache!) {
-    if (typeof key === 'string' && key.startsWith(firstName)) {
       return { playerId: player.id, playerName: player.name }
     }
   }
   
-  // 5. Try matching by first name + last initial (e.g., "Naman S" -> "Naman Satija")
-  const lastInitialMatch = lowerName.match(/^(\w+)\s+(\w)\.?$/)
+  // 2. Exact canonical name
+  const directMatch = players.find(p => normalizePlayerName(p.name).toLowerCase() === lowerName)
+  if (directMatch) {
+    return { playerId: directMatch.id, playerName: directMatch.name }
+  }
+  
+  // 3. First name + last initial (e.g., "Naman S" or "Naman S.")
+  const lastInitialMatch = lowerName.match(/^(\S+)\s+(\w)\.?$/)
   if (lastInitialMatch) {
     const [, first, lastInit] = lastInitialMatch
-    for (const [key, player] of playerCache!) {
-      if (typeof key === 'string') {
-        const playerParts = key.split(' ')
-        if (playerParts[0] === first && 
-            playerParts.length > 1 && 
-            playerParts[playerParts.length - 1].startsWith(lastInit)) {
-          return { playerId: player.id, playerName: player.name }
-        }
-      }
+    const candidates = players.filter(p => {
+      const parts = normalizePlayerName(p.name).toLowerCase().split(' ')
+      return parts.length > 1 &&
+             parts[0] === first &&
+             parts[parts.length - 1].startsWith(lastInit)
+    })
+    if (candidates.length === 1) {
+      return { playerId: candidates[0].id, playerName: candidates[0].name }
     }
   }
   

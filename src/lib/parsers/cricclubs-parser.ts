@@ -1,12 +1,13 @@
 import * as cheerio from 'cheerio'
 import type { ParsedMatchData, ParsedBattingEntry, ParsedBowlingEntry, ParsedFieldingEntry, ParsedBowlerWicketEntry } from '@/types/models'
 import { createHash } from 'crypto'
+import { isNotOutDismissal, isDidNotBat } from './dismissal'
 
 // Custom error class for parsing errors
 export class ParseError extends Error {
   constructor(
     message: string,
-    public code: 'WRONG_PAGE_TYPE' | 'NO_BATTING_DATA' | 'NO_TEAMS_FOUND' | 'INVALID_HTML' | 'PARSE_FAILED',
+    public code: 'WRONG_PAGE_TYPE' | 'NO_BATTING_DATA' | 'NO_TEAMS_FOUND' | 'INVALID_HTML' | 'PARSE_FAILED' | 'DATE_NOT_FOUND',
     public details?: string
   ) {
     super(message)
@@ -81,7 +82,14 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
   // Parse date from the page
   const dateText = $('.ms-league-name span').text() || ''
   const dateMatch = dateText.match(/(\d{1,2}\/\d{1,2}\/\d{4})/)
-  const date = dateMatch ? parseDate(dateMatch[1]) : new Date().toISOString().split('T')[0]
+  if (!dateMatch) {
+    throw new ParseError(
+      'Could not find the match date in the scorecard',
+      'DATE_NOT_FOUND',
+      'The parser could not find a MM/DD/YYYY date in the match header. The match was not imported so it is not filed under the wrong season. Make sure you uploaded the CricClubs "Full Scorecard" page.'
+    )
+  }
+  const date = parseDate(dateMatch[1])
   
   // Parse competition name
   const competition = $('.match-summary h3 strong').first().text().trim()
@@ -139,7 +147,11 @@ export function parseCricClubsScorecard(html: string): ParsedMatchData {
       // Check for "not out" indicator
       const dismissalCell = cells.eq(1)
       const dismissalText = dismissalCell.text().trim()
-      const notOut = dismissalText.toLowerCase() === 'not out' || 
+      
+      // "dnb" / "did not bat" / "absent" rows are not innings
+      if (isDidNotBat(dismissalText) || isDidNotBat(firstCellText)) return
+      
+      const notOut = isNotOutDismissal(dismissalText) || 
                      playerName.endsWith('*') ||
                      cells.first().text().includes('not out')
       
@@ -403,8 +415,8 @@ function parseBowlingRow($: any, $row: any): ParsedBowlingEntry | null {
   const balls = completedOvers * 6 + extraBalls
   
   // Calculate economy if not provided
-  if (!economy && overs > 0) {
-    economy = runs / overs
+  if (!economy && balls > 0) {
+    economy = runs / (balls / 6)
   }
   
   // Look for wides and no-balls in any remaining cells
@@ -611,7 +623,11 @@ function parseDate(dateStr: string): string {
     const [month, day, year] = parts
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   }
-  return new Date().toISOString().split('T')[0]
+  throw new ParseError(
+    `Could not parse match date "${dateStr}"`,
+    'DATE_NOT_FOUND',
+    'Expected a MM/DD/YYYY date in the match header.'
+  )
 }
 
 /**
