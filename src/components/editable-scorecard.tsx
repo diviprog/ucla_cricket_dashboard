@@ -7,6 +7,7 @@ import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetc
 interface Player {
   id: string
   name: string
+  is_ucla?: boolean
 }
 
 interface BattingPerformance {
@@ -270,6 +271,7 @@ export function EditableScorecard({
                     {getInitials(player.name)}
                   </div>
                   <span className="text-white">{player.name}</span>
+                  {player.is_ucla === false && <span className="text-xs text-orange-300">(guest)</span>}
                 </button>
               ))}
               

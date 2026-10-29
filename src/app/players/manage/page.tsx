@@ -11,6 +11,7 @@ interface Player {
   id: string
   name: string
   aliases: string[]
+  is_ucla?: boolean // undefined until migration 001 has run
 }
 
 export default function ManagePlayersPage() {
@@ -19,6 +20,7 @@ export default function ManagePlayersPage() {
   const [newPlayerName, setNewPlayerName] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [toggling, setToggling] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Player | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -67,6 +69,30 @@ export default function ManagePlayersPage() {
       setMessage({ type: 'error', text: 'Failed to add player' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleToggleGuest = async (player: Player) => {
+    const makeUcla = player.is_ucla === false
+    setToggling(player.id)
+    setMessage(null)
+    try {
+      const response = await adminFetch('/api/players/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, isUcla: makeUcla }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMessage({ type: 'success', text: `${player.name} is now ${makeUcla ? 'a UCLA player' : 'a guest'}.` })
+        fetchPlayers()
+      } else {
+        setMessage({ type: 'error', text: isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to update player' })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to update player' })
+    } finally {
+      setToggling(null)
     }
   }
 
@@ -181,6 +207,11 @@ export default function ManagePlayersPage() {
                   <div>
                     <h3 className="font-semibold text-white group-hover:text-ucla-gold transition-colors">
                       {player.name}
+                      {player.is_ucla === false && (
+                        <span className="ml-2 align-middle px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 text-xs font-medium">
+                          Guest
+                        </span>
+                      )}
                     </h3>
                     {player.aliases.length > 0 && (
                       <p className="text-xs text-muted-foreground">
@@ -190,14 +221,26 @@ export default function ManagePlayersPage() {
                   </div>
                 </Link>
                 
-                <Button 
-                  size="sm" 
-                  variant="ghost"
-                  className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                  onClick={() => setConfirmDelete(player)}
-                >
-                  🗑️ Delete
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-white"
+                    onClick={() => handleToggleGuest(player)}
+                    disabled={toggling === player.id}
+                    title="Guests' performances are kept but hidden from individual stats"
+                  >
+                    {toggling === player.id ? 'Saving...' : player.is_ucla === false ? 'Mark as UCLA' : 'Mark as guest'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="ghost"
+                    className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                    onClick={() => setConfirmDelete(player)}
+                  >
+                    🗑️ Delete
+                  </Button>
+                </div>
               </div>
             </div>
           ))}

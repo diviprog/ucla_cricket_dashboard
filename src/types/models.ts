@@ -15,6 +15,7 @@ export interface Player {
   contact_info?: Record<string, unknown>
   year?: string
   major?: string
+  is_ucla: boolean // false = guest: performances stored, hidden from individual stats
   created_at: string
 }
 
@@ -31,7 +32,7 @@ export interface Match {
   date: string
   opponent: string
   venue?: string
-  match_type: 'league' | 'playoff' | 'friendly' | 'tournament'
+  match_type: 'league' | 'playoff' | 'friendly' | 'tournament' | 'intrasquad'
   competition_name?: string
   result: 'win' | 'loss' | 'tie' | 'no_result'
   our_team_name?: string // The team name UCLA played under
@@ -71,6 +72,7 @@ export interface BattingPerformance {
   bowled_lbw: boolean
   dismissal_text?: string // "c Naman S b Tanmay D"
   batting_position: number
+  team_side?: 0 | 1 | null // 0 = our_team_name, 1 = opponent
   created_at: string
 }
 
@@ -118,6 +120,7 @@ export interface BowlingPerformance {
   wides: number
   no_balls: number
   economy: number
+  team_side?: 0 | 1 | null
   created_at: string
 }
 
@@ -150,6 +153,7 @@ export interface FieldingPerformance {
   catches: number
   run_outs: number
   stumpings: number
+  team_side?: 0 | 1 | null
   created_at: string
 }
 

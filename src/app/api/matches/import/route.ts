@@ -4,7 +4,6 @@ import { requireAdmin } from '@/lib/auth/require-admin'
 import { parseCricClubsScorecard, generateContentHash as generateCricClubsHash } from '@/lib/parsers/cricclubs-parser'
 import { parseCricCenterScorecard, generateContentHash as generateCricCenterHash } from '@/lib/parsers/criccenter-parser'
 import { detectScorecardFormat } from '@/lib/parsers/format-detector'
-import { resolvePlayerName, createPlayerIfNotExists, initializePlayerCache } from '@/lib/parsers/player-resolver'
 import {
   detectSeasonFromDate,
   getOrCreateSeason,
@@ -12,8 +11,30 @@ import {
   updateBowlingSeasonStats,
   updateFieldingSeasonStats,
 } from '@/lib/services/stats-service'
+import { buildImportPlan, type OurSide, type PlayerDecision, type PlayerRef, type Roster } from '@/lib/import/import-plan'
+import { describeDbError } from '@/lib/supabase/migration-guard'
+import { clearPlayerCache } from '@/lib/parsers/player-resolver'
 import { ParsedMatchData } from '@/types/models'
 import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
+
+function parseOurSide(value: unknown): OurSide | null {
+  if (value === 0 || value === '0') return 0
+  if (value === 1 || value === '1') return 1
+  if (value === 'both') return 'both'
+  return null
+}
+
+function parseJson<T>(value: unknown): T | undefined {
+  if (typeof value !== 'string') return value as T | undefined
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return undefined
+  }
+}
+
+const bad = (error: string, extra: Record<string, unknown> = {}) =>
+  NextResponse.json({ success: false, error, ...extra }, { status: 400 })
 
 export async function POST(request: NextRequest) {
   const denied = await requireAdmin(request)
@@ -23,393 +44,260 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin()
     let html: string
     let metadata: any = {}
+    let ourSideRaw: unknown
+    let decisionsRaw: unknown
 
     // Check if request is FormData (file upload) or JSON
     const contentType = request.headers.get('content-type') || ''
 
     if (contentType.includes('multipart/form-data')) {
-      // Handle file upload (new webarchive support)
       const formData = await request.formData()
       const file = formData.get('file') as File
 
-      if (!file) {
-        return NextResponse.json(
-          { success: false, error: 'No file provided' },
-          { status: 400 }
-        )
-      }
+      if (!file) return bad('No file provided')
 
-      // Extract metadata from form if provided
-      const metadataStr = formData.get('metadata') as string
-      if (metadataStr) {
-        try {
-          metadata = JSON.parse(metadataStr)
-        } catch {
-          // Ignore invalid metadata
-        }
-      }
-
-      // Store filename in metadata
+      metadata = parseJson(formData.get('metadata')) || {}
       metadata.filename = file.name
+      ourSideRaw = formData.get('ourSide')
+      decisionsRaw = parseJson(formData.get('playerDecisions'))
 
-      // Check if it's a webarchive file
       if (isWebArchive(file.name)) {
         try {
           const arrayBuffer = await file.arrayBuffer()
           html = await extractHTMLFromWebArchive(arrayBuffer)
         } catch (error) {
-          const errorMsg = error instanceof Error ? getWebArchiveErrorMessage(error) : 'Failed to process webarchive file'
-          return NextResponse.json(
-            { success: false, error: errorMsg },
-            { status: 400 }
-          )
+          return bad(error instanceof Error ? getWebArchiveErrorMessage(error) : 'Failed to process webarchive file')
         }
       } else {
-        // Regular HTML file
         html = await file.text()
       }
     } else {
-      // Handle JSON request (existing behavior)
       const body = await request.json()
       html = body.html
       metadata = body.metadata || {}
-
-      if (!html) {
-        return NextResponse.json(
-          { success: false, error: 'No HTML content provided' },
-          { status: 400 }
-        )
-      }
+      ourSideRaw = body.ourSide
+      decisionsRaw = body.playerDecisions
     }
 
-    if (!html || html.trim().length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'HTML content is empty' },
-        { status: 400 }
-      )
+    if (!html || html.trim().length === 0) return bad('HTML content is empty')
+
+    const ourSide = parseOurSide(ourSideRaw)
+    if (ourSide === null) {
+      return bad("ourSide is required: 0 (Team A), 1 (Team B) or 'both' (intrasquad)")
+    }
+    const decisions = (decisionsRaw && typeof decisionsRaw === 'object' ? decisionsRaw : {}) as Record<string, PlayerDecision>
+    if (metadata?.matchType === 'intrasquad' && ourSide !== 'both') {
+      return bad("Match type 'intrasquad' requires ourSide 'both'")
     }
 
-    // Detect scorecard format
     const format = detectScorecardFormat(html)
-
     if (format === 'unknown') {
-      return NextResponse.json(
-        { success: false, error: 'Unable to detect scorecard format. Please ensure the HTML is from CricClubs or CricCenter.' },
-        { status: 400 }
-      )
+      return bad('Unable to detect scorecard format. Please ensure the HTML is from CricClubs or CricCenter.')
     }
 
-    // Generate content hash for duplicate detection
-    const contentHash = format === 'cricclubs'
-      ? generateCricClubsHash(html)
-      : generateCricCenterHash(html)
-
-    // Check for duplicate
+    // Duplicate detection
+    const contentHash = format === 'cricclubs' ? generateCricClubsHash(html) : generateCricCenterHash(html)
     const { data: existingImport } = await supabase
       .from('import_history')
       .select('id, match_id')
       .eq('content_hash', contentHash)
-      .single()
+      .maybeSingle()
 
     if (existingImport) {
       return NextResponse.json({
         success: false,
+        errorCode: 'ALREADY_IMPORTED',
         error: 'This scorecard has already been imported',
         matchId: existingImport.match_id,
       })
     }
 
-    // Parse the HTML using the appropriate parser
-    let parsedData: ParsedMatchData
-    if (format === 'cricclubs') {
-      parsedData = parseCricClubsScorecard(html)
-    } else {
-      parsedData = parseCricCenterScorecard(html)
+    const parsedData: ParsedMatchData =
+      format === 'cricclubs' ? parseCricClubsScorecard(html) : parseCricCenterScorecard(html)
+
+    // Roster = past confirmations (players + aliases)
+    const [{ data: players, error: playersError }, { data: aliases, error: aliasesError }] = await Promise.all([
+      supabase.from('players').select('id, name, is_ucla'),
+      supabase.from('player_aliases').select('alias, player_id'),
+    ])
+    if (playersError || aliasesError) {
+      return NextResponse.json(
+        { success: false, error: describeDbError(playersError || aliasesError, 'Failed to load players') },
+        { status: 500 }
+      )
     }
-    
-    // Detect and get/create season
-    const seasonName = detectSeasonFromDate(parsedData.date)
-    const seasonId = await getOrCreateSeason(seasonName)
-    
-    // Determine opponent and our innings
-    const ourTeamName = metadata?.ourTeamName || 'UCLA'
-    let ourInnings = parsedData.innings.find(i => 
-      i.team.toLowerCase().includes(ourTeamName.toLowerCase())
-    )
-    let opponentInnings = parsedData.innings.find(i => 
-      !i.team.toLowerCase().includes(ourTeamName.toLowerCase())
-    )
-    
-    // If can't determine, use second innings as ours (common case)
-    if (!ourInnings && parsedData.innings.length >= 2) {
-      ourInnings = parsedData.innings[1]
-      opponentInnings = parsedData.innings[0]
-    }
-    
-    const opponent = opponentInnings?.team || parsedData.teams.find(t => 
-      !t.toLowerCase().includes(ourTeamName.toLowerCase())
-    ) || 'Unknown'
-    
-    // Determine result based on scores (ignore parsed result text as it's unreliable)
-    let result = 'no_result'
-    if (ourInnings && opponentInnings) {
-      if (ourInnings.total > opponentInnings.total) result = 'win'
-      else if (ourInnings.total < opponentInnings.total) result = 'loss'
-      else result = 'tie'
-    }
-    
-    // Create match record with extras breakdown
+    const roster: Roster = { players: players || [], aliases: aliases || [] }
+
+    // Everything below is decided here, before any write
+    const planned = buildImportPlan(parsedData, ourSide, decisions, roster)
+    if (!planned.ok) return bad(planned.error, { missing: planned.missing })
+    const plan = planned.plan
+
+    const seasonId = await getOrCreateSeason(detectSeasonFromDate(parsedData.date))
+
+    // ---- Writes ----
     const { data: match, error: matchError } = await supabase
       .from('matches')
       .insert({
         season_id: seasonId,
         date: parsedData.date,
-        opponent,
         venue: metadata?.venue,
-        match_type: metadata?.matchType || 'league',
+        match_type: plan.match.match_type || metadata?.matchType || 'league',
         competition_name: metadata?.competitionName || parsedData.competition,
-        result,
-        our_team_name: ourTeamName,
-        our_score: ourInnings ? `${ourInnings.total}/${ourInnings.wickets}` : null,
-        opponent_score: opponentInnings ? `${opponentInnings.total}/${opponentInnings.wickets}` : null,
-        our_extras_total: ourInnings?.extrasBreakdown?.total || ourInnings?.extras || 0,
-        our_extras_wides: ourInnings?.extrasBreakdown?.wides || 0,
-        our_extras_no_balls: ourInnings?.extrasBreakdown?.noBalls || 0,
-        our_extras_byes: ourInnings?.extrasBreakdown?.byes || 0,
-        our_extras_leg_byes: ourInnings?.extrasBreakdown?.legByes || 0,
         notes: metadata?.notes,
         raw_html_hash: contentHash,
+        our_team_name: plan.match.our_team_name,
+        opponent: plan.match.opponent,
+        result: plan.match.result,
+        our_score: plan.match.our_score,
+        opponent_score: plan.match.opponent_score,
+        our_extras_total: plan.match.our_extras_total,
+        our_extras_wides: plan.match.our_extras_wides,
+        our_extras_no_balls: plan.match.our_extras_no_balls,
+        our_extras_byes: plan.match.our_extras_byes,
+        our_extras_leg_byes: plan.match.our_extras_leg_byes,
       })
       .select()
       .single()
-    
+
     if (matchError) {
       console.error('Error creating match:', matchError)
-      return NextResponse.json(
-        { success: false, error: 'Failed to create match record' },
-        { status: 500 }
-      )
+      return NextResponse.json({ success: false, error: 'Failed to create match record' }, { status: 500 })
     }
-    
-    // Record import history
-    await supabase.from('import_history').insert({
+
+    const writeErrors: string[] = []
+    const note = (what: string, error: { message?: string } | null) => {
+      if (error) {
+        console.error(`Import: ${what}:`, error)
+        writeErrors.push(`${what}: ${describeDbError(error)}`)
+      }
+    }
+
+    const { error: historyError } = await supabase.from('import_history').insert({
       match_id: match.id,
       filename: metadata?.filename || 'unknown.html',
       content_hash: contentHash,
     })
-    
-    // Initialize player cache
-    await initializePlayerCache()
-    
-    // Track all players to update stats for
-    const battingPlayerIds: string[] = []
-    const bowlingPlayerIds: string[] = []
-    const fieldingPlayerIds: string[] = []
-    
-    // Import batting performances for our team
-    if (ourInnings) {
-      for (const entry of ourInnings.battingEntries) {
-        // Resolve or create player
-        let playerId: string
-        const resolved = await resolvePlayerName(entry.playerName, match.id)
-        
-        if (resolved) {
-          playerId = resolved.playerId
-        } else {
-          // Create new player
-          playerId = await createPlayerIfNotExists(entry.playerName)
-        }
-        
-        battingPlayerIds.push(playerId)
-        
-        // Insert batting performance
-        const { error: perfError } = await supabase
-          .from('batting_performances')
-          .insert({
-            match_id: match.id,
-            player_id: playerId,
-            runs: entry.runs,
-            balls: entry.balls,
-            fours: entry.fours,
-            sixes: entry.sixes,
-            not_out: entry.notOut,
-            bowled_lbw: entry.isBowledOrLBW,
-            dismissal_text: entry.dismissalText,
-            batting_position: entry.battingPosition,
-          })
-        
-        if (perfError) {
-          console.error('Error inserting batting performance:', perfError)
-        }
-      }
+    note('import history', historyError)
+
+    // New players (UCLA or guest)
+    const newIds = new Map<string, string>()
+    for (const p of plan.newPlayers) {
+      const { data, error } = await supabase
+        .from('players')
+        .insert({ name: p.name, is_ucla: p.isUcla })
+        .select('id')
+        .single()
+      if (error || !data) note(`create player ${p.name}`, error)
+      else newIds.set(p.key, data.id)
     }
-    
-    // Import bowling performances for our team (from opponent's innings)
-    // When the opponent bats, our players bowl
-    // Also try ourInnings bowling entries as fallback (some HTML structures differ)
-    const bowlingEntriesToImport = opponentInnings?.bowlingEntries?.length 
-      ? opponentInnings.bowlingEntries 
-      : ourInnings?.bowlingEntries || []
-    
-    for (const entry of bowlingEntriesToImport) {
-      // Resolve or create player
-      let playerId: string
-      const resolved = await resolvePlayerName(entry.playerName, match.id)
-      
-      if (resolved) {
-        playerId = resolved.playerId
-      } else {
-        playerId = await createPlayerIfNotExists(entry.playerName)
-      }
-      
-      bowlingPlayerIds.push(playerId)
-      
-      // Insert bowling performance
-      const { error: bowlError } = await supabase
-        .from('bowling_performances')
-        .insert({
-          match_id: match.id,
-          player_id: playerId,
-          overs: entry.overs,
-          balls: entry.balls,
-          maidens: entry.maidens,
-          runs_conceded: entry.runs,
-          wickets: entry.wickets,
-          dots: entry.dots,
-          wides: entry.wides,
-          no_balls: entry.noBalls,
-          economy: entry.economy,
-        })
-      
-      if (bowlError) {
-        console.error('Error inserting bowling performance:', bowlError)
-      }
+
+    // Aliases for links whose scorecard name differs from the canonical name; duplicates are fine
+    for (const a of plan.aliases) {
+      const { error } = await supabase.from('player_aliases').insert({ player_id: a.playerId, alias: a.alias })
+      if (error && error.code !== '23505') note(`alias ${a.alias}`, error)
     }
-    
-    // Import fielding performances from dismissals in opponent's innings
-    // (catches, run outs, stumpings are credited when opponent gets out)
-    if (opponentInnings && opponentInnings.fieldingEntries) {
-      for (const entry of opponentInnings.fieldingEntries) {
-        // Resolve or create player
-        let playerId: string
-        const resolved = await resolvePlayerName(entry.playerName, match.id)
-        
-        if (resolved) {
-          playerId = resolved.playerId
-        } else {
-          playerId = await createPlayerIfNotExists(entry.playerName)
-        }
-        
-        fieldingPlayerIds.push(playerId)
-        
-        // Insert or update fielding performance
-        const { data: existingFielding } = await supabase
-          .from('fielding_performances')
-          .select('id, catches, run_outs, stumpings')
-          .eq('match_id', match.id)
-          .eq('player_id', playerId)
-          .single()
-        
-        if (existingFielding) {
-          // Update existing record
+    if (plan.newPlayers.length || plan.aliases.length) clearPlayerCache()
+
+    const idOf = (ref: PlayerRef) => (ref.kind === 'existing' ? ref.playerId : newIds.get(ref.key))
+
+    const battingRows = plan.batting
+      .filter(r => idOf(r.player))
+      .map(({ player, teamSide, entry }) => ({
+        match_id: match.id,
+        player_id: idOf(player)!,
+        team_side: teamSide,
+        runs: entry.runs,
+        balls: entry.balls,
+        fours: entry.fours,
+        sixes: entry.sixes,
+        not_out: entry.notOut,
+        bowled_lbw: entry.isBowledOrLBW,
+        dismissal_text: entry.dismissalText,
+        batting_position: entry.battingPosition,
+      }))
+    const bowlingRows = plan.bowling
+      .filter(r => idOf(r.player))
+      .map(({ player, teamSide, entry }) => ({
+        match_id: match.id,
+        player_id: idOf(player)!,
+        team_side: teamSide,
+        overs: entry.overs,
+        balls: entry.balls,
+        maidens: entry.maidens,
+        runs_conceded: entry.runs,
+        wickets: entry.wickets,
+        dots: entry.dots,
+        wides: entry.wides,
+        no_balls: entry.noBalls,
+        economy: entry.economy,
+      }))
+    const fieldingRows = plan.fielding
+      .filter(r => idOf(r.player))
+      .map(r => ({
+        match_id: match.id,
+        player_id: idOf(r.player)!,
+        team_side: r.teamSide,
+        catches: r.catches,
+        run_outs: r.runOuts,
+        stumpings: r.stumpings,
+      }))
+    const wicketRows = plan.wicketTypes
+      .filter(r => idOf(r.player))
+      .map(r => ({
+        match_id: match.id,
+        bowler_player_id: idOf(r.player)!,
+        dismissal_type: r.dismissalType,
+        wicket_count: r.count,
+      }))
+
+    if (battingRows.length) note('batting', (await supabase.from('batting_performances').insert(battingRows)).error)
+    if (bowlingRows.length) note('bowling', (await supabase.from('bowling_performances').insert(bowlingRows)).error)
+    if (fieldingRows.length) note('fielding', (await supabase.from('fielding_performances').insert(fieldingRows)).error)
+    if (wicketRows.length) {
+      note(
+        'wicket types',
+        (
           await supabase
-            .from('fielding_performances')
-            .update({
-              catches: existingFielding.catches + entry.catches,
-              run_outs: existingFielding.run_outs + entry.runOuts,
-              stumpings: existingFielding.stumpings + entry.stumpings,
-            })
-            .eq('id', existingFielding.id)
-        } else {
-          // Insert new record
-          const { error: fieldError } = await supabase
-            .from('fielding_performances')
-            .insert({
-              match_id: match.id,
-              player_id: playerId,
-              catches: entry.catches,
-              run_outs: entry.runOuts,
-              stumpings: entry.stumpings,
-            })
-          
-          if (fieldError) {
-            console.error('Error inserting fielding performance:', fieldError)
-          }
-        }
-      }
-    }
-    
-    // Import bowler wicket types from opponent's innings dismissals
-    // This tracks HOW our bowlers take their wickets (caught, bowled, lbw, stumped)
-    if (opponentInnings && opponentInnings.bowlerWicketEntries) {
-      // Group entries by bowler name and dismissal type
-      const wicketMap = new Map<string, Map<string, number>>()
-      
-      for (const entry of opponentInnings.bowlerWicketEntries) {
-        if (!wicketMap.has(entry.bowlerName)) {
-          wicketMap.set(entry.bowlerName, new Map())
-        }
-        const dismissalMap = wicketMap.get(entry.bowlerName)!
-        dismissalMap.set(entry.dismissalType, (dismissalMap.get(entry.dismissalType) || 0) + 1)
-      }
-      
-      // Insert bowler wicket types
-      for (const [bowlerName, dismissalCounts] of wicketMap) {
-        // Resolve or create bowler
-        let playerId: string
-        const resolved = await resolvePlayerName(bowlerName, match.id)
-        
-        if (resolved) {
-          playerId = resolved.playerId
-        } else {
-          playerId = await createPlayerIfNotExists(bowlerName)
-        }
-        
-        // Insert each dismissal type count
-        for (const [dismissalType, count] of dismissalCounts) {
-          const { error: wicketError } = await supabase
             .from('bowler_wicket_types')
-            .upsert({
-              match_id: match.id,
-              bowler_player_id: playerId,
-              dismissal_type: dismissalType,
-              wicket_count: count,
-            }, {
-              onConflict: 'match_id,bowler_player_id,dismissal_type',
-            })
-          
-          if (wicketError) {
-            console.error('Error inserting bowler wicket type:', wicketError)
-          }
-        }
-      }
+            .upsert(wicketRows, { onConflict: 'match_id,bowler_player_id,dismissal_type' })
+        ).error
+      )
     }
-    
-    // Update season stats for all players
-    const uniqueBatting = Array.from(new Set(battingPlayerIds))
-    const uniqueBowling = Array.from(new Set(bowlingPlayerIds))
-    const uniqueFielding = Array.from(new Set(fieldingPlayerIds))
-    
-    for (const playerId of uniqueBatting) {
-      await updatePlayerSeasonStats(playerId, seasonId)
+
+    // Season stats (guests included; views filter on players.is_ucla)
+    const uniqueBatting = Array.from(new Set(battingRows.map(r => r.player_id)))
+    const uniqueBowling = Array.from(new Set(bowlingRows.map(r => r.player_id)))
+    const uniqueFielding = Array.from(new Set(fieldingRows.map(r => r.player_id)))
+    for (const id of uniqueBatting) await updatePlayerSeasonStats(id, seasonId)
+    for (const id of uniqueBowling) await updateBowlingSeasonStats(id, seasonId)
+    for (const id of uniqueFielding) await updateFieldingSeasonStats(id, seasonId)
+
+    const label = ourSide === 'both'
+      ? `${plan.match.our_team_name} vs ${plan.match.opponent} (intrasquad)`
+      : `${plan.match.our_team_name} vs ${plan.match.opponent}`
+
+    if (writeErrors.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          matchId: match.id,
+          error: `Match ${label} was created but some rows failed (${writeErrors.join('; ')}). Delete the match from the Matches page and import again.`,
+        },
+        { status: 500 }
+      )
     }
-    
-    for (const playerId of uniqueBowling) {
-      await updateBowlingSeasonStats(playerId, seasonId)
-    }
-    
-    for (const playerId of uniqueFielding) {
-      await updateFieldingSeasonStats(playerId, seasonId)
-    }
-    
+
     return NextResponse.json({
       success: true,
       matchId: match.id,
-      message: `Imported match: ${opponent} on ${parsedData.date}`,
+      message: `Imported ${label} on ${parsedData.date}`,
       stats: {
         batting: uniqueBatting.length,
         bowling: uniqueBowling.length,
         fielding: uniqueFielding.length,
+        newPlayers: plan.newPlayers.length,
+        guests: plan.newPlayers.filter(p => !p.isUcla).length,
       },
     })
   } catch (error) {
@@ -420,4 +308,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-

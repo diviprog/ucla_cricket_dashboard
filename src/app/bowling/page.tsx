@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase/client'
+import { describeDbError } from '@/lib/supabase/migration-guard'
 import { cn, getInitials } from '@/lib/utils'
 import { Target, Upload, BarChart3, Trophy, Award, Medal } from 'lucide-react'
 
@@ -54,6 +55,7 @@ export default function BowlingPage() {
   const [selectedSeason, setSelectedSeason] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortKey>('wickets')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [wicketTypeStats, setWicketTypeStats] = useState<WicketTypeStats>({})
 
   useEffect(() => {
@@ -98,17 +100,21 @@ export default function BowlingPage() {
       .from('bowling_season_stats')
       .select(`
         *,
-        player:players(id, name),
+        player:players!inner(id, name, is_ucla),
         season:seasons(id, name)
       `)
       .eq('season_id', selectedSeason)
+      .eq('player.is_ucla', true) // guests are hidden from individual stats
       .gt('total_balls', 0)
 
     if (error) {
       console.error('Error loading bowling stats:', error)
+      setLoadError(describeDbError(error))
+      setStats([])
       setLoading(false)
       return
     }
+    setLoadError(null)
 
     // Filter out Unclaimed players
     const filtered = (data || []).filter(row => 
@@ -221,7 +227,9 @@ export default function BowlingPage() {
         </div>
       </motion.div>
 
-      {loading ? (
+      {loadError ? (
+        <div className="p-4 rounded-lg bg-red-900/50 text-red-300">{loadError}</div>
+      ) : loading ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

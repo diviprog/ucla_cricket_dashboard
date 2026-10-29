@@ -55,6 +55,8 @@ interface Match {
   id: string
   date: string
   opponent: string
+  our_team_name: string | null
+  match_type: string
   result: string
   our_score: string | null
   opponent_score: string | null
@@ -70,6 +72,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [topPerformers, setTopPerformers] = useState<TopPerformers | null>(null)
   const [recentMatches, setRecentMatches] = useState<Match[]>([])
+  const [statsError, setStatsError] = useState<string | null>(null)
 
   // Load seasons and competitions on mount
   useEffect(() => {
@@ -108,6 +111,9 @@ export default function Dashboard() {
           setStats(data.stats)
           setTopPerformers(data.topPerformers)
           setRecentMatches(data.recentMatches)
+          setStatsError(null)
+        } else {
+          setStatsError(data.error || 'Failed to load stats')
         }
       } catch (error) {
         console.error('Error loading stats:', error)
@@ -125,6 +131,9 @@ export default function Dashboard() {
 
   return (
     <div className="container mx-auto px-4 py-8 page-transition">
+      {statsError && (
+        <div className="mb-6 p-4 rounded-lg bg-red-900/50 text-red-300">{statsError}</div>
+      )}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -479,7 +488,14 @@ export default function Dashboard() {
                            match.result === 'tie' ? 'T' : '-'}
                         </motion.div>
                         <div className="flex-1">
-                          <p className="font-semibold text-white group-hover:text-ucla-gold transition-colors">vs {match.opponent}</p>
+                          <p className="font-semibold text-white group-hover:text-ucla-gold transition-colors">
+                            {match.match_type === 'intrasquad'
+                              ? `${match.our_team_name || 'Team A'} vs ${match.opponent}`
+                              : `vs ${match.opponent}`}
+                            {match.match_type === 'intrasquad' && (
+                              <span className="ml-2 px-2 py-0.5 rounded bg-purple-600/30 text-purple-300 text-xs font-medium">Intrasquad</span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground mt-0.5">{formatDate(match.date)}</p>
                         </div>
                         <div className="text-right font-mono text-sm flex items-center gap-1.5 tabular-nums">

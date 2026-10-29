@@ -3,36 +3,55 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import { supabase } from '@/lib/supabase/client'
 import { getSeasonLeaderboard, getBattingDismissalStatsForLeaderboard } from '@/lib/services/stats-service'
 import { formatStat, getInitials } from '@/lib/utils'
 import { TrendingUp, Users, BarChart3, Upload, Trophy, Award, Medal } from 'lucide-react'
 
-type Leaderboard = Awaited<ReturnType<typeof getSeasonLeaderboard>>
+interface Season {
+  id: string
+  name: string
+}
+
+type LeaderboardRow = Awaited<ReturnType<typeof getSeasonLeaderboard>>[number]
 type DismissalStats = Awaited<ReturnType<typeof getBattingDismissalStatsForLeaderboard>>
 
-// Client components can't be async under React 19 (the page never hydrates), so load in an effect
 export default function PlayersPage() {
-  const [leaderboard, setLeaderboard] = useState<Leaderboard>([])
+  const [seasons, setSeasons] = useState<Season[]>([])
+  const [selectedSeason, setSelectedSeason] = useState<string>('')
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([])
   const [dismissalStats, setDismissalStats] = useState<DismissalStats>(new Map())
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([getSeasonLeaderboard(), getBattingDismissalStatsForLeaderboard()])
-      .then(([board, dismissals]) => {
-        setLeaderboard(board)
-        setDismissalStats(dismissals)
+    supabase
+      .from('seasons')
+      .select('id, name')
+      .order('start_date', { ascending: false })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setSeasons(data)
+          setSelectedSeason(data[0].id) // latest season
+        } else {
+          setLoading(false)
+        }
       })
-      .catch(error => console.error('Error loading batting leaderboard:', error))
-      .finally(() => setLoading(false))
+    getBattingDismissalStatsForLeaderboard().then(setDismissalStats)
   }, [])
 
-  if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center py-20 text-muted-foreground">Loading batting stats...</div>
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!selectedSeason) return
+    setLoading(true)
+    setError(null)
+    getSeasonLeaderboard(selectedSeason)
+      .then(setLeaderboard)
+      .catch(e => {
+        setLeaderboard([])
+        setError(e instanceof Error ? e.message : 'Failed to load batting stats')
+      })
+      .finally(() => setLoading(false))
+  }, [selectedSeason])
 
   return (
     <div className="container mx-auto px-4 py-8 page-transition">
@@ -63,7 +82,31 @@ export default function PlayersPage() {
         </Link>
       </motion.div>
 
-      {leaderboard.length === 0 ? (
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 mb-8">
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-1">
+            Season
+          </label>
+          <select
+            value={selectedSeason}
+            onChange={(e) => setSelectedSeason(e.target.value)}
+            className="bg-card border border-border rounded-xl px-4 py-2.5 text-white focus:ring-2 focus:ring-ucla-blue focus:border-transparent transition-all"
+          >
+            {seasons.map((season) => (
+              <option key={season.id} value={season.id}>
+                {season.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="p-4 rounded-lg bg-red-900/50 text-red-300">{error}</div>
+      ) : loading ? (
+        <div className="text-center py-20 text-muted-foreground">Loading batting statistics...</div>
+      ) : leaderboard.length === 0 ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

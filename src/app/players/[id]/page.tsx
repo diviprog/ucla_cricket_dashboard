@@ -17,6 +17,7 @@ interface PlayerData {
   id: string
   name: string
   aliases: string[]
+  is_ucla?: boolean // undefined until migration 001 has run
   year?: string
   major?: string
   battingSeasonStats: any[]
@@ -39,6 +40,7 @@ export default function PlayerProfilePage(props: { params: Promise<{ id: string 
   const [editingName, setEditingName] = useState(false)
   const [newName, setNewName] = useState('')
   const [savingName, setSavingName] = useState(false)
+  const [savingGuest, setSavingGuest] = useState(false)
 
   useEffect(() => {
     loadPlayer()
@@ -214,6 +216,26 @@ export default function PlayerProfilePage(props: { params: Promise<{ id: string 
     }
   }
 
+  async function toggleGuest() {
+    if (!player) return
+    const makeUcla = player.is_ucla === false
+    setSavingGuest(true)
+    try {
+      const response = await adminFetch('/api/players/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, isUcla: makeUcla }),
+      })
+      const data = await response.json()
+      if (data.success) loadPlayer()
+      else alert(isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to update player')
+    } catch (err) {
+      alert('Failed to update player')
+    } finally {
+      setSavingGuest(false)
+    }
+  }
+
   function startEditingName() {
     setNewName(player?.name || '')
     setEditingName(true)
@@ -283,6 +305,24 @@ export default function PlayerProfilePage(props: { params: Promise<{ id: string 
           ) : (
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold text-white">{player.name}</h1>
+              {player.is_ucla === false && (
+                <span
+                  className="px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 text-sm font-medium"
+                  title="Guest: performances are kept but hidden from leaderboards and the dashboard"
+                >
+                  Guest
+                </span>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={toggleGuest}
+                  disabled={savingGuest}
+                  className="text-sm text-ucla-blue hover:text-ucla-gold disabled:opacity-50"
+                  title="Guests' performances are kept but hidden from individual stats"
+                >
+                  {savingGuest ? 'Saving...' : player.is_ucla === false ? 'Mark as UCLA' : 'Mark as guest'}
+                </button>
+              )}
               {isAdmin && (
                 <button
                   onClick={startEditingName}

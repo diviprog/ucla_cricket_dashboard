@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { describeDbError } from '@/lib/supabase/migration-guard'
 import type { 
   CalculatedBattingStats, 
   CalculatedBowlingStats, 
@@ -310,17 +311,19 @@ function isUnclaimedPlayer(playerName?: string): boolean {
 }
 
 /**
- * Get batting season stats with player info
- * Excludes "Unclaimed" players from the leaderboard
+ * Get batting season stats with player info. Pass a season: without one you get
+ * one row per player per season.
+ * Excludes guests and "Unclaimed" players from the leaderboard
  */
 export async function getSeasonLeaderboard(seasonId?: string) {
   let query = supabase
     .from('player_season_stats')
     .select(`
       *,
-      player:players(*),
+      player:players!inner(*),
       season:seasons(*)
     `)
+    .eq('player.is_ucla', true) // guests are hidden from individual stats
     .gt('total_runs', 0)
     .order('total_runs', { ascending: false })
   
@@ -332,7 +335,7 @@ export async function getSeasonLeaderboard(seasonId?: string) {
   
   if (error) {
     console.error('Error fetching batting leaderboard:', error)
-    return []
+    throw new Error(describeDbError(error))
   }
   
   // Filter out Unclaimed players
@@ -349,9 +352,10 @@ export async function getBowlingLeaderboard(seasonId?: string) {
     .from('bowling_season_stats')
     .select(`
       *,
-      player:players(*),
+      player:players!inner(*),
       season:seasons(*)
     `)
+    .eq('player.is_ucla', true) // guests are hidden from individual stats
     .gt('total_wickets', 0)
     .order('total_wickets', { ascending: false })
   
@@ -363,7 +367,7 @@ export async function getBowlingLeaderboard(seasonId?: string) {
   
   if (error) {
     console.error('Error fetching bowling leaderboard:', error)
-    return []
+    throw new Error(describeDbError(error))
   }
   
   // Filter out Unclaimed players
@@ -380,9 +384,10 @@ export async function getFieldingLeaderboard(seasonId?: string) {
     .from('fielding_season_stats')
     .select(`
       *,
-      player:players(*),
+      player:players!inner(*),
       season:seasons(*)
     `)
+    .eq('player.is_ucla', true) // guests are hidden from individual stats
     .gt('total_dismissals', 0)
     .order('total_dismissals', { ascending: false })
   
@@ -394,7 +399,7 @@ export async function getFieldingLeaderboard(seasonId?: string) {
   
   if (error) {
     console.error('Error fetching fielding leaderboard:', error)
-    return []
+    throw new Error(describeDbError(error))
   }
   
   // Filter out Unclaimed players

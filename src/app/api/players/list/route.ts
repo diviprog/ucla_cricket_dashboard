@@ -9,7 +9,7 @@ export async function GET() {
     const supabase = getSupabaseAdmin()
     const { data: players, error } = await supabase
       .from('players')
-      .select('id, name')
+      .select('*') // includes is_ucla once migration 001 has run
       .order('name')
     
     if (error) {
@@ -22,7 +22,7 @@ export async function GET() {
     
     return NextResponse.json({
       success: true,
-      players: players || [],
+      players: (players || []).map(p => ({ id: p.id, name: p.name, is_ucla: p.is_ucla !== false })),
     })
   } catch (error) {
     console.error('List players error:', error)

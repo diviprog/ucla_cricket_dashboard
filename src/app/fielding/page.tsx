@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase/client'
+import { describeDbError } from '@/lib/supabase/migration-guard'
 import { cn, getInitials } from '@/lib/utils'
 import { Shield, Upload, BarChart3, Trophy, Award, Medal } from 'lucide-react'
 
@@ -39,6 +40,7 @@ export default function FieldingPage() {
   const [selectedSeason, setSelectedSeason] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortKey>('dismissals')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     loadSeasons()
@@ -69,16 +71,20 @@ export default function FieldingPage() {
       .from('fielding_season_stats')
       .select(`
         *,
-        player:players(id, name),
+        player:players!inner(id, name, is_ucla),
         season:seasons(id, name)
       `)
       .eq('season_id', selectedSeason)
+      .eq('player.is_ucla', true) // guests are hidden from individual stats
 
     if (error) {
       console.error('Error loading fielding stats:', error)
+      setLoadError(describeDbError(error))
+      setStats([])
       setLoading(false)
       return
     }
+    setLoadError(null)
 
     // Filter out Unclaimed players and players with 0 dismissals
     const filtered = (data || []).filter(row => 
@@ -168,7 +174,9 @@ export default function FieldingPage() {
         </div>
       </motion.div>
 
-      {loading ? (
+      {loadError ? (
+        <div className="p-4 rounded-lg bg-red-900/50 text-red-300">{loadError}</div>
+      ) : loading ? (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
