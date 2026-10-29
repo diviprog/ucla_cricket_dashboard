@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { use, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
@@ -48,7 +48,8 @@ function parseScoreTotal(score: string | null): number | null {
   return m ? parseInt(m[1]) : null
 }
 
-export default function MatchDetailPage({ params }: { params: { id: string } }) {
+export default function MatchDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params)
   const router = useRouter()
   const { isAdmin } = useAuth()
   const [match, setMatch] = useState<MatchData | null>(null)

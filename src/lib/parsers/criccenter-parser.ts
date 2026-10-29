@@ -8,6 +8,8 @@ import {
   ParsedBowlerWicketEntry,
   ExtrasBreakdown,
 } from '@/types/models'
+import { ParseError } from './cricclubs-parser'
+import { isNotOutDismissal, isDidNotBat } from './dismissal'
 
 /**
  * Parses a CricCenter scorecard HTML and extracts match data
@@ -18,8 +20,16 @@ export function parseCricCenterScorecard(html: string): ParsedMatchData {
   const $ = cheerio.load(html)
 
   // Extract match metadata
-  const dateStr = $('time[datetime]').attr('datetime') || new Date().toISOString()
-  const date = new Date(dateStr).toISOString().split('T')[0] // Format: YYYY-MM-DD
+  const dateStr = $('time[datetime]').attr('datetime')
+  const parsedDate = dateStr ? new Date(dateStr) : null
+  if (!parsedDate || isNaN(parsedDate.getTime())) {
+    throw new ParseError(
+      'Could not find the match date in the scorecard',
+      'DATE_NOT_FOUND',
+      'The parser could not find a valid <time datetime> in the CricCenter page. The match was not imported so it is not filed under the wrong season.'
+    )
+  }
+  const date = parsedDate.toISOString().split('T')[0] // Format: YYYY-MM-DD
 
   const competition = $('.ended-match-summary-title').text().trim()
   const venue = $('.ended-match-summary-venue').text().trim()
@@ -85,7 +95,10 @@ export function parseCricCenterScorecard(html: string): ParsedMatchData {
       const fours = parseInt($(tds[4]).text().trim()) || 0
       const sixes = parseInt($(tds[5]).text().trim()) || 0
 
-      const notOut = dismissalText.toLowerCase().includes('not out')
+      // "dnb" / "did not bat" / "absent" rows are not innings
+      if (isDidNotBat(dismissalText)) return
+
+      const notOut = isNotOutDismissal(dismissalText)
       const isBowledOrLBW = dismissalText.toLowerCase().includes('b ') ||
                            dismissalText.toLowerCase().includes('lbw')
 
