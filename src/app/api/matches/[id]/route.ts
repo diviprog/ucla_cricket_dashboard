@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/require-admin'
 import { 
   updatePlayerSeasonStats, 
   updateBowlingSeasonStats, 
@@ -10,9 +11,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   const matchId = params.id
 
   try {
+    const supabase = getSupabaseAdmin()
     // First, get the match to find its season
     const { data: match, error: matchError } = await supabase
       .from('matches')

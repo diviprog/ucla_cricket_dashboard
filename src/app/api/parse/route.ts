@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/require-admin'
 import { parseCricClubsScorecard, ParseError } from '@/lib/parsers/cricclubs-parser'
 import { parseCricCenterScorecard } from '@/lib/parsers/criccenter-parser'
 import { detectScorecardFormat } from '@/lib/parsers/format-detector'
 import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   try {
     let html: string
     let filename: string = 'unknown.html'

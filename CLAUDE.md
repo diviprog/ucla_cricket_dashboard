@@ -24,18 +24,20 @@ npm run build
 npm start
 
 # Seed database with players and seasons
-npx tsx src/scripts/seed-players.ts
+npx tsx --env-file=.env.local src/scripts/seed-players.ts
 ```
 
 ## Environment Setup
 
-Create `.env.local` with:
+Copy `.env.example` to `.env.local`:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server only, never NEXT_PUBLIC_
+ADMIN_EMAILS=admin1@example.com,admin2@example.com # comma-separated admin allowlist
 ```
 
-Database schema is referenced in `src/lib/supabase/schema.sql` (run in Supabase SQL Editor).
+Database: run `src/lib/supabase/schema.sql`, then `src/lib/supabase/rls.sql`, in the Supabase SQL Editor.
 
 ## Architecture
 
@@ -50,10 +52,10 @@ Database schema is referenced in `src/lib/supabase/schema.sql` (run in Supabase 
 ### Key Components
 
 **Authentication (`src/lib/auth/auth-context.tsx`):**
-- Uses Supabase auth session management
-- `isAdmin` = any authenticated user (no role-based checks)
+- Uses Supabase auth session management (client-side UI state only)
 - Provides `useAuth()` and `useRequireAdmin()` hooks
 - `AdminGuard` component redirects to `/admin/login` if not authenticated
+- Real enforcement is server-side; see Important Notes → Authentication
 
 **Player Resolution System:**
 - Players have canonical names in `players` table
@@ -132,45 +134,6 @@ Tracks HOW bowlers take wickets via `bowler_wicket_types` table:
 - `displayPlayerName(name)` - Show "Unclaimed" instead of "Unclaimed #1"
 - `cn(...inputs)` - Merge Tailwind classes via clsx + tailwind-merge
 
-## Implementation Status
-
-### Implemented
-
-- **`POST /api/matches/import`** - Full import pipeline (depends on missing libs listed below)
-- **Dashboard page** (`src/app/page.tsx`) - Layout and UI complete (depends on missing APIs)
-- **Navigation** - Header with auth state, admin links
-- **Auth context** - Session management, sign in/out, admin guard
-- **Editable scorecard component** - Player reassign + inline stat editing (depends on missing APIs)
-- **Types & utilities** - Complete type definitions and helper functions
-
-### Missing Dependencies (blocking build/runtime)
-
-**Required Libraries:**
-- `@/lib/supabase/client` - Supabase browser client
-- `@/lib/supabase/schema.sql` - Database schema DDL
-- `@/lib/parsers/cricclubs-parser` - `parseCricClubsScorecard()`, `generateContentHash()`
-- `@/lib/parsers/player-resolver` - `resolvePlayerName()`, `createPlayerIfNotExists()`, `initializePlayerCache()`
-- `@/lib/services/stats-service` - `detectSeasonFromDate()`, `getOrCreateSeason()`, `updatePlayerSeasonStats()`, `updateBowlingSeasonStats()`, `updateFieldingSeasonStats()`
-- `@/components/ui/stats-card` - StatsCard component for dashboard
-
-**Missing API Routes:**
-- `GET /api/seasons` - Returns `{ success, seasons, competitions }` for season/competition filters
-- `GET /api/stats/dashboard?seasonId=&competition=` - Returns `{ success, stats, topPerformers, recentMatches }`
-- `GET /api/export?format=xlsx` - Excel export with 4 sheets (batting, bowling, fielding, matches)
-- `GET /api/players/list` - Returns player list for reassign dropdown
-- `POST /api/performances/reassign` - Body: `{ performanceId, performanceType, newPlayerId, matchId }`
-- `POST /api/performances/update` - Body: `{ performanceId, performanceType, matchId, updates }`
-
-**Missing Pages:**
-- `/upload` - Upload CricClubs HTML scorecard
-- `/players` - Batting stats/leaderboard
-- `/bowling` - Bowling stats/leaderboard
-- `/fielding` - Fielding stats/leaderboard
-- `/matches` - Match list
-- `/matches/[id]` - Match detail + editable scorecard
-- `/admin/login` - Admin sign-in page
-- `/players/manage` - Player/alias management
-
 ## Database Schema Notes
 
 **Key Tables:**
@@ -191,14 +154,15 @@ Tracks HOW bowlers take wickets via `bowler_wicket_types` table:
 ## Important Notes
 
 **Authentication:**
-- Current implementation: any authenticated Supabase user = admin
-- No role-based access control or RLS policies documented
-- AdminGuard redirects to `/admin/login` for unauthenticated users
+- Admin API routes call `requireAdmin` (`src/lib/auth/require-admin.ts`), which checks the session's email against `ADMIN_EMAILS`
+- All writes use `getSupabaseAdmin()` (`src/lib/supabase/server.ts`, service-role key, server only)
+- Browser calls admin routes through `adminFetch` (`src/lib/auth/admin-fetch.ts`)
+- RLS is public-read only (`src/lib/supabase/rls.sql`); anon key cannot write
 
 **Seed Script:**
 - Located at `src/scripts/seed-players.ts`
 - Creates players, aliases, and seasons (2024-2025, 2025-2026)
-- Falls back to hardcoded Supabase credentials if env vars missing (insecure for production)
+- Needs `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; run with `npx tsx --env-file=.env.local src/scripts/seed-players.ts`
 
 **Name Variations:**
 - Player names in scorecards vary ("Devansh M", "Devansh Mishra", "D Mishra")

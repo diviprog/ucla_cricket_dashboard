@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseAdmin()
     const searchParams = request.nextUrl.searchParams
     const seasonId = searchParams.get('seasonId')
     const competitionName = searchParams.get('competition')

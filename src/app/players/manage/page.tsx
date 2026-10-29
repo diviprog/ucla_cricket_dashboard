@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { AdminGuard } from '@/components/admin-guard'
+import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 
 interface Player {
   id: string
@@ -47,7 +48,7 @@ export default function ManagePlayersPage() {
     setMessage(null)
     
     try {
-      const response = await fetch('/api/players', {
+      const response = await adminFetch('/api/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newPlayerName.trim() }),
@@ -60,7 +61,7 @@ export default function ManagePlayersPage() {
         setNewPlayerName('')
         fetchPlayers()
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to add player' })
+        setMessage({ type: 'error', text: isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to add player' })
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to add player' })
@@ -74,7 +75,7 @@ export default function ManagePlayersPage() {
     setMessage(null)
     
     try {
-      const response = await fetch(`/api/players?id=${player.id}`, {
+      const response = await adminFetch(`/api/players?id=${player.id}`, {
         method: 'DELETE',
       })
       
@@ -85,7 +86,7 @@ export default function ManagePlayersPage() {
         setConfirmDelete(null)
         fetchPlayers()
       } else {
-        setMessage({ type: 'error', text: data.error || 'Failed to delete player' })
+        setMessage({ type: 'error', text: isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to delete player' })
         setConfirmDelete(null)
       }
     } catch (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/require-admin'
 import { parseCricClubsScorecard, generateContentHash as generateCricClubsHash } from '@/lib/parsers/cricclubs-parser'
 import { parseCricCenterScorecard, generateContentHash as generateCricCenterHash } from '@/lib/parsers/criccenter-parser'
 import { detectScorecardFormat } from '@/lib/parsers/format-detector'
@@ -15,7 +16,11 @@ import { ParsedMatchData } from '@/types/models'
 import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   try {
+    const supabase = getSupabaseAdmin()
     let html: string
     let metadata: any = {}
 

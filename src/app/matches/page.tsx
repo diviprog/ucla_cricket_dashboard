@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 import { formatDate } from '@/lib/utils'
+import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 
 interface Match {
   id: string
@@ -54,7 +55,7 @@ export default function MatchesPage() {
     setDeleting(matchId)
     
     try {
-      const response = await fetch(`/api/matches/${matchId}`, {
+      const response = await adminFetch(`/api/matches/${matchId}`, {
         method: 'DELETE',
       })
       
@@ -63,7 +64,7 @@ export default function MatchesPage() {
       if (result.success) {
         setMatches(prev => prev.filter(m => m.id !== matchId))
       } else {
-        alert('Failed to delete match: ' + result.error)
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : 'Failed to delete match: ' + result.error)
       }
     } catch (error) {
       console.error('Error deleting match:', error)

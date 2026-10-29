@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/require-admin'
 import { 
   updatePlayerSeasonStats, 
   updateBowlingSeasonStats, 
@@ -10,7 +11,11 @@ import {
  * Update performance stats (runs, balls, wickets, etc.)
  */
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   try {
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
     const { 
       performanceId, 

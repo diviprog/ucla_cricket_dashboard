@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 export async function GET() {
   try {
+    const supabase = getSupabaseAdmin()
     // Get all seasons
     const { data: seasons, error: seasonsError } = await supabase
       .from('seasons')
