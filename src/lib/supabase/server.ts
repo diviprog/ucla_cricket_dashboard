@@ -17,9 +17,29 @@ export function getSupabaseAdmin(): SupabaseClient {
   if (!url) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set.')
   }
+  assertSecretKey(serviceKey)
 
   adminClient = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
   return adminClient
+}
+
+// A public key here makes every write fail RLS, and blocked UPDATE/DELETE fail
+// silently (0 rows), so refuse publishable/anon keys up front.
+export function assertSecretKey(key: string): void {
+  if (key.startsWith('sb_publishable_')) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is a publishable (public) key. Use the secret key (sb_secret_...) from Supabase → Project Settings → API Keys.')
+  }
+  if (key.startsWith('eyJ')) {
+    let role: unknown
+    try {
+      role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString()).role
+    } catch {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is not a valid key.')
+    }
+    if (role !== 'service_role') {
+      throw new Error(`SUPABASE_SERVICE_ROLE_KEY has role "${role}", expected "service_role". Use the service_role or secret key, not the anon key.`)
+    }
+  }
 }
