@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 import type { Player, PlayerAlias, MatchPlayerOverride } from '@/types/models'
 
 // Cache for player lookups
@@ -9,6 +9,7 @@ let aliasCache: Map<string, string> | null = null // alias -> player_id
  * Initialize caches from database
  */
 export async function initializePlayerCache(): Promise<void> {
+  const supabase = getSupabaseAdmin()
   // Load all players
   const { data: players, error: playersError } = await supabase
     .from('players')
@@ -68,6 +69,7 @@ export async function resolvePlayerName(
   rawName: string,
   matchId?: string
 ): Promise<{ playerId: string; playerName: string } | null> {
+  const supabase = getSupabaseAdmin()
   // Ensure caches are initialized
   if (!playerCache || !aliasCache) {
     await initializePlayerCache()
@@ -139,6 +141,7 @@ export async function resolvePlayerName(
  * Create a new player if not found
  */
 export async function createPlayerIfNotExists(name: string): Promise<string> {
+  const supabase = getSupabaseAdmin()
   const normalizedName = normalizePlayerName(name)
   
   // Check if player exists
@@ -174,6 +177,7 @@ export async function createPlayerIfNotExists(name: string): Promise<string> {
  * Add an alias for a player
  */
 export async function addPlayerAlias(playerId: string, alias: string): Promise<void> {
+  const supabase = getSupabaseAdmin()
   const normalizedAlias = normalizePlayerName(alias)
   
   const { error } = await supabase
@@ -198,6 +202,7 @@ export async function addMatchPlayerOverride(
   actualPlayerId: string,
   notes?: string
 ): Promise<void> {
+  const supabase = getSupabaseAdmin()
   const { error } = await supabase
     .from('match_player_overrides')
     .insert({
@@ -217,6 +222,7 @@ export async function addMatchPlayerOverride(
  * Get all players with their aliases
  */
 export async function getAllPlayersWithAliases(): Promise<(Player & { aliases: string[] })[]> {
+  const supabase = getSupabaseAdmin()
   const { data: players, error: playersError } = await supabase
     .from('players')
     .select('*')

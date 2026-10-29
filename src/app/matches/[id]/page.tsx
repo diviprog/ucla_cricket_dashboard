@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client'
 import { formatStat, formatDate, getInitials, cn, isUnclaimed, displayPlayerName } from '@/lib/utils'
 import { EditableScorecard } from '@/components/editable-scorecard'
 import { useAuth } from '@/lib/auth/auth-context'
+import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 import {
   TrendingUp,
   Target,
@@ -142,7 +143,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
     if (!match) return
     
     try {
-      const response = await fetch('/api/matches/update', {
+      const response = await adminFetch('/api/matches/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -154,7 +155,7 @@ export default function MatchDetailPage({ params }: { params: { id: string } }) 
       if (result.success) {
         loadMatchDetails()
       } else {
-        alert(result.error)
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : result.error)
       }
     } catch (error) {
       alert('Failed to save changes')

@@ -242,13 +242,4 @@ INSERT INTO seasons (name, start_date, end_date) VALUES
   ('2025-2026', '2025-09-01', '2026-06-30')
 ON CONFLICT (name) DO NOTHING;
 
--- Enable Row Level Security (optional, for future auth)
--- ALTER TABLE players ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE batting_performances ENABLE ROW LEVEL SECURITY;
-
--- Create policies (for public access without auth for MVP)
--- CREATE POLICY "Public read access" ON players FOR SELECT USING (true);
--- CREATE POLICY "Public read access" ON matches FOR SELECT USING (true);
--- CREATE POLICY "Public read access" ON batting_performances FOR SELECT USING (true);
-
+-- Row Level Security: run src/lib/supabase/rls.sql after this file.

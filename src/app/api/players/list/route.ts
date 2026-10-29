@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 /**
  * Get all players for dropdown selection
  */
 export async function GET() {
   try {
+    const supabase = getSupabaseAdmin()
     const { data: players, error } = await supabase
       .from('players')
       .select('id, name')

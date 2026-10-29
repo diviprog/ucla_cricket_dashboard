@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/require-admin'
 import { 
   updatePlayerSeasonStats, 
   updateBowlingSeasonStats, 
@@ -15,6 +16,7 @@ const UNCLAIMED_PLAYER_ID = 'unclaimed'
  * named "Unclaimed #1", "Unclaimed #2", etc.
  */
 async function getOrCreateUnclaimedPlayer(matchId: string, performanceType: string): Promise<string> {
+  const supabase = getSupabaseAdmin()
   // Find the next available unclaimed number for this match
   // Get all unclaimed players already used in this match
   const tableName = performanceType === 'batting' 
@@ -81,7 +83,11 @@ async function getOrCreateUnclaimedPlayer(matchId: string, performanceType: stri
  * This updates the performance record and recalculates season stats for both players
  */
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   try {
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
     let { 
       performanceId, 

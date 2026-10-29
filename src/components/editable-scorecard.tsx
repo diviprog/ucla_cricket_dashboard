@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { formatStat, getInitials, cn, isUnclaimed, displayPlayerName } from '@/lib/utils'
+import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 
 interface Player {
   id: string
@@ -120,7 +121,7 @@ export function EditableScorecard({
   async function handleReassign(performanceId: string, performanceType: string, newPlayerId: string) {
     setLoading(true)
     try {
-      const response = await fetch('/api/performances/reassign', {
+      const response = await adminFetch('/api/performances/reassign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,7 +135,7 @@ export function EditableScorecard({
       if (result.success) {
         onUpdate()
       } else {
-        alert(result.error)
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : result.error)
       }
     } catch (error) {
       alert('Failed to reassign player')
@@ -152,7 +153,7 @@ export function EditableScorecard({
     value: number | boolean | string
   ) {
     try {
-      const response = await fetch('/api/performances/update', {
+      const response = await adminFetch('/api/performances/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -166,7 +167,7 @@ export function EditableScorecard({
       if (result.success) {
         onUpdate()
       } else {
-        alert(result.error)
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : result.error)
       }
     } catch (error) {
       alert('Failed to update stat')

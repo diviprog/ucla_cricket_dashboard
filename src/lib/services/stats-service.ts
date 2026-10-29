@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 import type { 
   CalculatedBattingStats, 
   CalculatedBowlingStats, 
@@ -127,6 +128,8 @@ export async function updatePlayerSeasonStats(
   playerId: string,
   seasonId: string
 ): Promise<void> {
+  // Writes go through the service role client (server-only)
+  const supabase = getSupabaseAdmin()
   // Get all performances for this player in this season
   const { data: performances, error } = await supabase
     .from('batting_performances')
@@ -179,6 +182,8 @@ export async function updateBowlingSeasonStats(
   playerId: string,
   seasonId: string
 ): Promise<void> {
+  // Writes go through the service role client (server-only)
+  const supabase = getSupabaseAdmin()
   // Get all bowling performances for this player in this season
   const { data: performances, error } = await supabase
     .from('bowling_performances')
@@ -231,6 +236,8 @@ export async function updateFieldingSeasonStats(
   playerId: string,
   seasonId: string
 ): Promise<void> {
+  // Writes go through the service role client (server-only)
+  const supabase = getSupabaseAdmin()
   // Get all fielding performances for this player in this season
   const { data: performances, error } = await supabase
     .from('fielding_performances')
@@ -273,6 +280,8 @@ export async function updateFieldingSeasonStats(
  * Recalculate all season stats (use after match import)
  */
 export async function recalculateAllSeasonStats(seasonId: string): Promise<void> {
+  // Writes go through the service role client (server-only)
+  const supabase = getSupabaseAdmin()
   // Get all players who have performances in this season
   const { data: performances } = await supabase
     .from('batting_performances')
@@ -801,6 +810,8 @@ export function detectSeasonFromDate(date: Date | string): string {
  * Get or create season by name
  */
 export async function getOrCreateSeason(seasonName: string): Promise<string> {
+  // Writes go through the service role client (server-only)
+  const supabase = getSupabaseAdmin()
   // Try to find existing season
   const { data: existing } = await supabase
     .from('seasons')

@@ -71,13 +71,15 @@ cd cricket-stats-scrapper
 npm install
 ```
 
-2. Create `.env.local`:
+2. Copy `.env.example` to `.env.local` and fill it in:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server only, never NEXT_PUBLIC_
+ADMIN_EMAILS=admin1@example.com,admin2@example.com # comma-separated admin allowlist
 ```
 
-3. Set up database - run `src/lib/supabase/schema.sql` in Supabase SQL Editor
+3. Set up database - run `src/lib/supabase/schema.sql`, then `src/lib/supabase/rls.sql`, in Supabase SQL Editor
 
 4. Start dev server:
 ```bash

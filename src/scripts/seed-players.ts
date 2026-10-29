@@ -1,14 +1,25 @@
 /**
  * Seed script to initialize player roster from 2025-2026 CSV
- * Run with: npm run db:seed
+ * Run with: npx tsx --env-file=.env.local src/scripts/seed-players.ts
+ * Requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (writes bypass RLS).
  */
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bjgjiobxobgjqhtjcqku.supabase.co'
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZ2ppb2J4b2JnanFodGpjcWt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NzM0MjQsImV4cCI6MjA4MDQ0OTQyNH0.b4uOd1eZ7DNMyqJQrb7sBlJJAX30FjdDQ4X7QXtDun0'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error(
+    'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.\n' +
+      'Run with: npx tsx --env-file=.env.local src/scripts/seed-players.ts'
+  )
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  auth: { persistSession: false },
+})
 
 // Player roster from 2025-2026 CSV
 // Each entry: [canonical name, ...aliases]

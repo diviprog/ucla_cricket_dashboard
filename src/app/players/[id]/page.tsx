@@ -11,6 +11,7 @@ import {
   type DismissalBreakdown 
 } from '@/lib/services/stats-service'
 import { useAuth } from '@/lib/auth/auth-context'
+import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 
 interface PlayerData {
   id: string
@@ -141,19 +142,15 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
     
     setAddingAlias(true)
     try {
-      const { error } = await supabase
-        .from('player_aliases')
-        .insert({
-          player_id: player.id,
-          alias: newAlias.trim(),
-        })
+      const response = await adminFetch('/api/players/aliases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: player.id, alias: newAlias.trim() }),
+      })
+      const data = await response.json()
       
-      if (error) {
-        if (error.code === '23505') {
-          alert('This alias already exists')
-        } else {
-          alert('Failed to add alias')
-        }
+      if (!data.success) {
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to add alias')
       } else {
         setNewAlias('')
         loadPlayer()
@@ -171,14 +168,14 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
     if (!confirm(`Remove alias "${alias}"?`)) return
     
     try {
-      const { error } = await supabase
-        .from('player_aliases')
-        .delete()
-        .eq('player_id', player.id)
-        .eq('alias', alias)
+      const response = await adminFetch(
+        `/api/players/aliases?playerId=${encodeURIComponent(player.id)}&alias=${encodeURIComponent(alias)}`,
+        { method: 'DELETE' }
+      )
+      const data = await response.json()
       
-      if (error) {
-        alert('Failed to remove alias')
+      if (!data.success) {
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to remove alias')
       } else {
         loadPlayer()
       }
@@ -192,7 +189,7 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
     
     setSavingName(true)
     try {
-      const response = await fetch('/api/players/update', {
+      const response = await adminFetch('/api/players/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -207,7 +204,7 @@ export default function PlayerProfilePage({ params }: { params: { id: string } }
         setEditingName(false)
         loadPlayer()
       } else {
-        alert(data.error || 'Failed to update name')
+        alert(isAuthError(response) ? ADMIN_AUTH_ERROR : data.error || 'Failed to update name')
       }
     } catch (err) {
       alert('Failed to update name')

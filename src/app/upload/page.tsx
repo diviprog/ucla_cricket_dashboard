@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { AdminGuard } from '@/components/admin-guard'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 
 interface ParsedFile {
   id: string // unique ID for each file
@@ -83,7 +84,7 @@ export default function UploadPage() {
         formData.append('file', file)
 
         // Send to parse API (which now handles both HTML and webarchive)
-        const response = await fetch('/api/parse', {
+        const response = await adminFetch('/api/parse', {
           method: 'POST',
           body: formData, // Send as FormData, not JSON
         })
@@ -115,7 +116,7 @@ export default function UploadPage() {
               ? {
                   ...f,
                   status: 'error',
-                  error: result.error,
+                  error: isAuthError(response) ? ADMIN_AUTH_ERROR : result.error,
                   errorCode: result.errorCode,
                   errorDetails: result.details,
                 }
@@ -219,13 +220,13 @@ export default function UploadPage() {
             teams: group.teams,
           }))
 
-          response = await fetch('/api/matches/import', {
+          response = await adminFetch('/api/matches/import', {
             method: 'POST',
             body: formData,
           })
         } else if (mainFile.content) {
           // For HTML files, send as JSON
-          response = await fetch('/api/matches/import', {
+          response = await adminFetch('/api/matches/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -244,7 +245,7 @@ export default function UploadPage() {
         const result = await response.json()
 
         if (!result.success) {
-          console.error('Import error:', result.error)
+          console.error('Import error:', isAuthError(response) ? ADMIN_AUTH_ERROR : result.error)
         }
       }
     } catch (error) {

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth/require-admin'
 
 // GET /api/players - List all players with aliases
 export async function GET() {
   try {
+    const supabase = getSupabaseAdmin()
     const { data: players, error: playersError } = await supabase
       .from('players')
       .select('*')
@@ -48,7 +50,11 @@ export async function GET() {
 
 // POST /api/players - Create new player
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   try {
+    const supabase = getSupabaseAdmin()
     const body = await request.json()
     const { name } = body
     
@@ -101,7 +107,11 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/players - Delete a player
 export async function DELETE(request: NextRequest) {
+  const denied = await requireAdmin(request)
+  if (denied) return denied
+
   try {
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
     const playerId = searchParams.get('id')
     

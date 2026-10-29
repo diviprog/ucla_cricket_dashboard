@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:seed": "npx tsx src/scripts/seed-players.ts"
+    "db:seed": "npx tsx --env-file=.env.local src/scripts/seed-players.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
