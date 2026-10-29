@@ -1,18 +1,38 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { getSeasonLeaderboard, getBattingDismissalStatsForLeaderboard } from '@/lib/services/stats-service'
 import { formatStat, getInitials } from '@/lib/utils'
 import { TrendingUp, Users, BarChart3, Upload, Trophy, Award, Medal } from 'lucide-react'
 
-export const dynamic = 'force-dynamic'
+type Leaderboard = Awaited<ReturnType<typeof getSeasonLeaderboard>>
+type DismissalStats = Awaited<ReturnType<typeof getBattingDismissalStatsForLeaderboard>>
 
-export default async function PlayersPage() {
-  const [leaderboard, dismissalStats] = await Promise.all([
-    getSeasonLeaderboard(),
-    getBattingDismissalStatsForLeaderboard()
-  ])
+// Client components can't be async under React 19 (the page never hydrates), so load in an effect
+export default function PlayersPage() {
+  const [leaderboard, setLeaderboard] = useState<Leaderboard>([])
+  const [dismissalStats, setDismissalStats] = useState<DismissalStats>(new Map())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([getSeasonLeaderboard(), getBattingDismissalStatsForLeaderboard()])
+      .then(([board, dismissals]) => {
+        setLeaderboard(board)
+        setDismissalStats(dismissals)
+      })
+      .catch(error => console.error('Error loading batting leaderboard:', error))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center py-20 text-muted-foreground">Loading batting stats...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 page-transition">
