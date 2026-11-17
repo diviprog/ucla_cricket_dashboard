@@ -7,7 +7,7 @@ import { isNotOutDismissal, isDidNotBat } from './dismissal'
 export class ParseError extends Error {
   constructor(
     message: string,
-    public code: 'WRONG_PAGE_TYPE' | 'NO_BATTING_DATA' | 'NO_TEAMS_FOUND' | 'INVALID_HTML' | 'PARSE_FAILED' | 'DATE_NOT_FOUND',
+    public code: 'WRONG_PAGE_TYPE' | 'NO_BATTING_DATA' | 'NO_TEAMS_FOUND' | 'INVALID_HTML' | 'PARSE_FAILED' | 'DATE_NOT_FOUND' | 'API_CREDITS_EXHAUSTED' | 'API_KEY_INVALID',
     public details?: string
   ) {
     super(message)

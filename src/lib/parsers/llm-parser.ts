@@ -49,6 +49,37 @@ export type Extractor = (pageText: string, previous?: { card: Scorecard; problem
  * Shared by the scorecard extraction and the roster name matching.
  */
 export async function callStructured<T>(model: string, system: string, user: string, schema: z.ZodType<T>, name: string): Promise<T> {
+  try {
+    return await callProvider(model, system, user, schema, name)
+  } catch (e) {
+    throw accountError(e, model.startsWith('claude') ? 'Anthropic' : 'OpenAI') ?? e
+  }
+}
+
+/** Turn "out of credits" and "bad key" from either provider into an error the upload page can show. */
+function accountError(e: unknown, provider: 'Anthropic' | 'OpenAI'): ParseError | null {
+  if (!(e instanceof Anthropic.APIError) && !(e instanceof OpenAI.APIError)) return null
+  const billing = provider === 'Anthropic' ? 'console.anthropic.com → Billing' : 'platform.openai.com → Billing'
+  const type = e instanceof Anthropic.APIError ? e.type : e.code
+  // Anthropic: 402 billing_error (older accounts: 400 "credit balance is too low"). OpenAI: 429 insufficient_quota.
+  if (e.status === 402 || type === 'billing_error' || type === 'insufficient_quota' || /credit balance|no credits remaining|exceeded your current quota/i.test(e.message)) {
+    return new ParseError(
+      `Scorecards cannot be read right now: the ${provider} API account is out of credits`,
+      'API_CREDITS_EXHAUSTED',
+      `Add credits at ${billing}, then upload the file again. Nothing was imported.`
+    )
+  }
+  if (e.status === 401) {
+    return new ParseError(
+      `Scorecards cannot be read right now: the ${provider} API key was rejected`,
+      'API_KEY_INVALID',
+      'Check the key in the server environment variables, then upload the file again.'
+    )
+  }
+  return null
+}
+
+async function callProvider<T>(model: string, system: string, user: string, schema: z.ZodType<T>, name: string): Promise<T> {
   const noOutput = (why: unknown) => new ParseError('The model did not return a result', 'PARSE_FAILED', `Call ended with: ${why}`)
   if (model.startsWith('claude')) {
     if (!process.env.ANTHROPIC_API_KEY) {
