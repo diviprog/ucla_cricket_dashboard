@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/require-admin'
-import { parseCricClubsScorecard, ParseError } from '@/lib/parsers/cricclubs-parser'
-import { parseCricCenterScorecard } from '@/lib/parsers/criccenter-parser'
-import { detectScorecardFormat } from '@/lib/parsers/format-detector'
+import { ParseError } from '@/lib/parsers/cricclubs-parser'
+import { parseScorecardWithLLM } from '@/lib/parsers/llm-parser'
 import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
 import { matchPlayerName } from '@/lib/parsers/player-resolver'
+import { suggestRosterMatches } from '@/lib/parsers/name-matcher'
 import { extractSides, type PlayerSuggestion } from '@/lib/import/import-plan'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
 import { describeDbError } from '@/lib/supabase/migration-guard'
@@ -80,27 +80,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Detect the format first
-    const format = detectScorecardFormat(html)
+    // Model-based extraction, checked in code (see llm-parser.ts)
+    const { parsed: parsedData, warnings: parseWarnings } = await parseScorecardWithLLM(html)
 
-    // Only reject if format is unknown
-    if (format === 'unknown') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unable to detect scorecard format',
-          errorCode: 'UNKNOWN_FORMAT',
-          details: 'This HTML file does not appear to be from CricClubs or CricCenter. Please upload a valid scorecard HTML file.'
-        },
-        { status: 400 }
-      )
-    }
-
-    // Parse using the appropriate parser
-    const parsedData = format === 'cricclubs'
-      ? parseCricClubsScorecard(html)
-      : parseCricCenterScorecard(html)
-    
     // Who played for which team, with a suggested roster match for each name
     let sides
     try {
@@ -144,6 +126,30 @@ export async function POST(request: NextRequest) {
       players: sides.players[i].map(p => ({ ...p, suggestion: suggest(p.name) })),
     }))
 
+    // Names the exact matcher missed get a second, model-assisted look. Never fatal.
+    const matchWarnings: string[] = []
+    try {
+      const unmatched = teamSides.flatMap(s => s.players.filter(p => p.suggestion.type === 'new').map(p => ({ name: p.name, team: s.team })))
+      const taken = new Map(
+        teamSides.map(s => [s.team, new Set(s.players.flatMap(p => (p.suggestion.type === 'existing' ? [p.suggestion.playerId] : [])))])
+      )
+      const roster = (players || []).map(p => ({
+        id: p.id as string,
+        name: p.name as string,
+        aliases: (aliases || []).filter(a => a.player_id === p.id).map(a => a.alias as string),
+      }))
+      const guesses = await suggestRosterMatches(unmatched, roster, taken)
+      for (const s of teamSides) {
+        for (const p of s.players) {
+          const hit = playerById.get(guesses.get(`${s.team}\n${p.name}`) || '')
+          if (hit) p.suggestion = { type: 'existing', playerId: hit.id, playerName: hit.name, isUcla: hit.is_ucla !== false, guessed: true }
+        }
+      }
+    } catch (e) {
+      console.error('Name matching failed:', e)
+      matchWarnings.push('Could not suggest roster matches for unrecognised names; link them by hand below.')
+    }
+
     // Add summary of what was parsed
     const battingCount = parsedData.innings.reduce((sum, inn) => sum + inn.battingEntries.length, 0)
     const bowlingCount = parsedData.innings.reduce((sum, inn) => sum + inn.bowlingEntries.length, 0)
@@ -154,12 +160,16 @@ export async function POST(request: NextRequest) {
         date: parsedData.date,
         teams: parsedData.teams,
         competition: parsedData.competition,
+        venue: parsedData.venue,
+        matchType: parsedData.matchType,
         result: parsedData.result,
         innings: parsedData.innings.length,
         battingEntries: battingCount,
         bowlingEntries: bowlingCount,
         sides: teamSides,
-        warnings: sides.warnings,
+        warnings: [...parseWarnings, ...sides.warnings, ...matchWarnings],
+        // Sent back unchanged to /api/matches/import, so what was reviewed is what gets imported
+        parsed: parsedData,
       },
       filename,
     })

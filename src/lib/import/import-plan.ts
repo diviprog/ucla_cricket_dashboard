@@ -40,7 +40,8 @@ export interface MatchSides {
 
 /** Returned by /api/parse for each scorecard name, to prefill the review UI. */
 export type PlayerSuggestion =
-  | { type: 'existing'; playerId: string; playerName: string; isUcla: boolean }
+  /** guessed: proposed by the model for a name the exact matcher missed; the admin should check it. */
+  | { type: 'existing'; playerId: string; playerName: string; isUcla: boolean; guessed?: boolean }
   | { type: 'new' }
 
 export type PlayerDecision =

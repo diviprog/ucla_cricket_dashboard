@@ -35,6 +35,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server only, never NEXT_PUBLIC_
 ADMIN_EMAILS=admin1@example.com,admin2@example.com # comma-separated admin allowlist
+ANTHROPIC_API_KEY=sk-ant-your-key                  # server only, scorecard parsing
+OPENAI_API_KEY=sk-your-key                         # optional, only if SCORECARD_MODEL is a non-Claude model
 ```
 
 Database: run `src/lib/supabase/schema.sql`, then `src/lib/supabase/rls.sql`, in the Supabase SQL Editor.
@@ -43,7 +45,16 @@ Database: run `src/lib/supabase/schema.sql`, then `src/lib/supabase/rls.sql`, in
 
 ### Data Flow
 
-**Match Import:** HTML Upload → `/api/matches/import` → Parse CricClubs HTML → Generate content hash → Check for duplicates → Resolve/create players via aliases → Write match + performances to Supabase → Update season stats
+**Match Import:** File upload → `/api/parse` → model-based parse (`src/lib/parsers/llm-parser.ts`) → admin reviews side + players → `/api/matches/import` receives the reviewed `parsed` scorecard back (it does not re-parse) → fingerprint duplicate check → `buildImportPlan()` → write match + performances → update season stats
+
+**Scorecard parsing (`parseScorecardWithLLM`):**
+- `clean-html.ts` reduces any saved page to text (tables as `a | b | c` rows); no site-specific selectors
+- Structured output into `ScorecardSchema` (`scorecard-schema.ts`). Default model `claude-haiku-5-5` (Anthropic); `SCORECARD_MODEL` overrides it, and a non-`claude-*` name goes to OpenAI
+- `scorecard-checks.ts` verifies the result in code (runs + extras = total, wickets, bowler figures, every name is on the page); failures go back to the model for up to 2 repair turns, then surface as warnings on the upload page
+- `scorecard-convert.ts` maps to `ParsedMatchData` and resolves short dismissal names ("Arvind A") to the full name on that side
+- `name-matcher.ts`: names the exact matcher (`matchPlayerName`) misses go to the model with the roster; code keeps a proposal only if the names share a word and no other name on that team claims the player. Shown on the upload page as "best guess, check"; `src/scripts/eval-names.ts` runs it live
+- `npm test` stubs the model; `npx tsx --env-file=.env.local src/scripts/eval-parser.ts [model ...]` runs the real one against the fixtures (costs money)
+- The old selector-based parsers (`cricclubs-parser.ts`, `criccenter-parser.ts`, `format-detector.ts`) are no longer called by any route
 
 **Dashboard:** Load season filters → Fetch team stats, top performers, recent matches → Display leaderboards
 

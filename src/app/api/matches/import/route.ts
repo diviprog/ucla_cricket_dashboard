@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/require-admin'
-import { parseCricClubsScorecard, generateContentHash as generateCricClubsHash } from '@/lib/parsers/cricclubs-parser'
-import { parseCricCenterScorecard, generateContentHash as generateCricCenterHash } from '@/lib/parsers/criccenter-parser'
-import { detectScorecardFormat } from '@/lib/parsers/format-detector'
+import { matchFingerprint } from '@/lib/parsers/llm-parser'
+import { ParsedMatchSchema } from '@/lib/parsers/parsed-match-schema'
 import {
   detectSeasonFromDate,
   getOrCreateSeason,
@@ -15,22 +14,12 @@ import { buildImportPlan, type OurSide, type PlayerDecision, type PlayerRef, typ
 import { describeDbError } from '@/lib/supabase/migration-guard'
 import { clearPlayerCache } from '@/lib/parsers/player-resolver'
 import { ParsedMatchData } from '@/types/models'
-import { extractHTMLFromWebArchive, isWebArchive, getWebArchiveErrorMessage } from '@/lib/parsers/webarchive-extractor'
 
 function parseOurSide(value: unknown): OurSide | null {
   if (value === 0 || value === '0') return 0
   if (value === 1 || value === '1') return 1
   if (value === 'both') return 'both'
   return null
-}
-
-function parseJson<T>(value: unknown): T | undefined {
-  if (typeof value !== 'string') return value as T | undefined
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return undefined
-  }
 }
 
 const bad = (error: string, extra: Record<string, unknown> = {}) =>
@@ -42,44 +31,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const supabase = getSupabaseAdmin()
-    let html: string
-    let metadata: any = {}
-    let ourSideRaw: unknown
-    let decisionsRaw: unknown
+    // The body carries the scorecard exactly as /api/parse returned it and the admin reviewed it
+    const body = await request.json().catch(() => null)
+    if (!body || typeof body !== 'object') return bad('Expected a JSON body')
+    const metadata = body.metadata || {}
+    const ourSideRaw: unknown = body.ourSide
+    const decisionsRaw: unknown = body.playerDecisions
 
-    // Check if request is FormData (file upload) or JSON
-    const contentType = request.headers.get('content-type') || ''
-
-    if (contentType.includes('multipart/form-data')) {
-      const formData = await request.formData()
-      const file = formData.get('file') as File
-
-      if (!file) return bad('No file provided')
-
-      metadata = parseJson(formData.get('metadata')) || {}
-      metadata.filename = file.name
-      ourSideRaw = formData.get('ourSide')
-      decisionsRaw = parseJson(formData.get('playerDecisions'))
-
-      if (isWebArchive(file.name)) {
-        try {
-          const arrayBuffer = await file.arrayBuffer()
-          html = await extractHTMLFromWebArchive(arrayBuffer)
-        } catch (error) {
-          return bad(error instanceof Error ? getWebArchiveErrorMessage(error) : 'Failed to process webarchive file')
-        }
-      } else {
-        html = await file.text()
-      }
-    } else {
-      const body = await request.json()
-      html = body.html
-      metadata = body.metadata || {}
-      ourSideRaw = body.ourSide
-      decisionsRaw = body.playerDecisions
+    const validated = ParsedMatchSchema.safeParse(body.parsed)
+    if (!validated.success) {
+      return bad('parsed scorecard is missing or malformed. Upload the file again.', {
+        details: validated.error.issues.slice(0, 5).map(i => `${i.path.join('.')}: ${i.message}`),
+      })
     }
-
-    if (!html || html.trim().length === 0) return bad('HTML content is empty')
+    const parsedData: ParsedMatchData = validated.data
 
     const ourSide = parseOurSide(ourSideRaw)
     if (ourSide === null) {
@@ -90,13 +55,8 @@ export async function POST(request: NextRequest) {
       return bad("Match type 'intrasquad' requires ourSide 'both'")
     }
 
-    const format = detectScorecardFormat(html)
-    if (format === 'unknown') {
-      return bad('Unable to detect scorecard format. Please ensure the HTML is from CricClubs or CricCenter.')
-    }
-
-    // Duplicate detection
-    const contentHash = format === 'cricclubs' ? generateCricClubsHash(html) : generateCricCenterHash(html)
+    // Duplicate detection on the match itself (date + both innings), not on the file's bytes
+    const contentHash = matchFingerprint(parsedData)
     const { data: existingImport } = await supabase
       .from('import_history')
       .select('id, match_id')
@@ -112,8 +72,23 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const parsedData: ParsedMatchData =
-      format === 'cricclubs' ? parseCricClubsScorecard(html) : parseCricCenterScorecard(html)
+    // Matches imported before fingerprints were hashed from the file: same date and same two scores
+    const scores = parsedData.innings.map(i => `${i.total}/${i.wickets}`).sort()
+    const { data: sameDay } = await supabase
+      .from('matches')
+      .select('id, our_score, opponent_score')
+      .eq('date', parsedData.date)
+    const twin = (sameDay || []).find(
+      m => JSON.stringify([m.our_score, m.opponent_score].filter(Boolean).sort()) === JSON.stringify(scores)
+    )
+    if (twin) {
+      return NextResponse.json({
+        success: false,
+        errorCode: 'ALREADY_IMPORTED',
+        error: 'A match on this date with the same scores has already been imported',
+        matchId: twin.id,
+      })
+    }
 
     // Roster = past confirmations (players + aliases)
     const [{ data: players, error: playersError }, { data: aliases, error: aliasesError }] = await Promise.all([
@@ -141,8 +116,8 @@ export async function POST(request: NextRequest) {
       .insert({
         season_id: seasonId,
         date: parsedData.date,
-        venue: metadata?.venue,
-        match_type: plan.match.match_type || metadata?.matchType || 'league',
+        venue: (metadata?.venue || parsedData.venue)?.slice(0, 200),
+        match_type: plan.match.match_type || metadata?.matchType || parsedData.matchType || 'league',
         competition_name: metadata?.competitionName || parsedData.competition,
         notes: metadata?.notes,
         raw_html_hash: contentHash,

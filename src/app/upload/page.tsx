@@ -9,6 +9,7 @@ import { AdminGuard } from '@/components/admin-guard'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { adminFetch, isAuthError, ADMIN_AUTH_ERROR } from '@/lib/auth/admin-fetch'
 import type { OurSide, PlayerDecision, PlayerSuggestion, Role } from '@/lib/import/import-plan'
+import type { ParsedMatchData } from '@/types/models'
 
 interface TeamSide {
   team: string
@@ -26,7 +27,7 @@ type DecisionValue = string
 
 const MATCH_TYPES = ['league', 'playoff', 'friendly', 'tournament', 'intrasquad'] as const
 
-const isUclaName = (team: string) => team.toLowerCase().includes('ucla')
+const isUclaName = (team: string) => /ucla|university of california,? (at )?los angeles/i.test(team)
 
 function toDecision(value: DecisionValue): PlayerDecision | null {
   if (value === 'new_ucla') return { action: 'new_ucla' }
@@ -54,7 +55,10 @@ interface ParsedFile {
     date: string
     teams: [string, string]
     competition?: string
+    venue?: string
+    matchType?: string
     result?: string
+    parsed?: ParsedMatchData // the scorecard as parsed; sent back unchanged on import
     battingEntries?: number
     bowlingEntries?: number
     sides?: TeamSide[]
@@ -64,8 +68,6 @@ interface ParsedFile {
   error?: string
   errorCode?: string
   errorDetails?: string
-  content?: string // HTML content (for HTML files)
-  rawFile?: File // Original file (for webarchive files)
 }
 
 interface MatchGroup {
@@ -150,12 +152,10 @@ export default function UploadPage() {
       ))
 
       try {
-        // For all files (HTML and webarchive), send as FormData to server
-        // Server will handle extraction if needed
+        // HTML and webarchive both go up as FormData; the server extracts and parses
         const formData = new FormData()
         formData.append('file', file)
 
-        // Send to parse API (which now handles both HTML and webarchive)
         const response = await adminFetch('/api/parse', {
           method: 'POST',
           body: formData, // Send as FormData, not JSON
@@ -163,23 +163,10 @@ export default function UploadPage() {
 
         const result = await response.json()
 
-        // For webarchive files, we need to extract HTML again for import
-        // For HTML files, just read the text
-        let content: string | undefined
-        const isWebArchiveFile = file.name.toLowerCase().endsWith('.webarchive')
-
-        if (isWebArchiveFile) {
-          // For webarchive, we'll need to send the file itself during import
-          // Store the file reference instead of content
-          content = undefined // Will send file during import
-        } else {
-          content = await file.text()
-        }
-
         if (result.success) {
           setFiles(prev => prev.map(f =>
             f.id === fileId
-              ? { ...f, status: 'parsed', matchInfo: result.data, content, rawFile: isWebArchiveFile ? file : undefined }
+              ? { ...f, status: 'parsed', matchInfo: result.data }
               : f
           ))
         } else {
@@ -228,7 +215,7 @@ export default function UploadPage() {
 
     const newMatchGroups: MatchGroup[] = Array.from(groups.entries()).map(([key, groupFiles]) => {
       // The file that gets imported is the one whose sides we review
-      const mainInfo = (groupFiles.find(f => f.content || f.rawFile) || groupFiles[0]).matchInfo!
+      const mainInfo = groupFiles[0].matchInfo!
       const sides = mainInfo.sides || []
       const uclaSides = sides.map((s, i) => (isUclaName(s.team) ? i : -1)).filter(i => i >= 0)
       const preselected: OurSide | null = uclaSides.length === 1 ? (uclaSides[0] as 0 | 1) : null
@@ -245,7 +232,9 @@ export default function UploadPage() {
         ourSide: null,
         decisions: {},
         metadata: {
-          matchType: 'league',
+          matchType: (MATCH_TYPES as readonly string[]).includes(mainInfo.matchType || '')
+            ? (mainInfo.matchType as MatchGroup['metadata']['matchType'])
+            : 'league',
           competitionName: mainInfo.competition || '',
           notes: '',
         },
@@ -297,8 +286,9 @@ export default function UploadPage() {
   const canImport = pendingGroups.length > 0 && pendingGroups.every(isReady)
 
   const importGroup = async (group: MatchGroup) => {
-    const mainFile = group.files.find(f => f.content || f.rawFile)
-    if (!mainFile || group.ourSide === null) return
+    const mainFile = group.files[0]
+    const parsed = mainFile?.matchInfo?.parsed
+    if (!parsed || group.ourSide === null) return
     updateGroup(group.key, g => ({ ...g, importStatus: 'importing', importMessage: undefined }))
 
     const playerDecisions: Record<string, PlayerDecision> = {}
@@ -306,25 +296,14 @@ export default function UploadPage() {
       const d = toDecision(group.decisions[p.name] || '')
       if (d) playerDecisions[p.name] = d
     }
-    const metadata = { ...group.metadata, date: group.date, teams: group.teams }
+    const metadata = { ...group.metadata, filename: mainFile.filename }
 
     try {
-      let response: Response
-      if (mainFile.rawFile) {
-        // Webarchive files go up as FormData
-        const formData = new FormData()
-        formData.append('file', mainFile.rawFile)
-        formData.append('metadata', JSON.stringify(metadata))
-        formData.append('ourSide', String(group.ourSide))
-        formData.append('playerDecisions', JSON.stringify(playerDecisions))
-        response = await adminFetch('/api/matches/import', { method: 'POST', body: formData })
-      } else {
-        response = await adminFetch('/api/matches/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: mainFile.content, metadata, ourSide: group.ourSide, playerDecisions }),
-        })
-      }
+      const response = await adminFetch('/api/matches/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parsed, metadata, ourSide: group.ourSide, playerDecisions }),
+      })
       const result = await response.json().catch(() => ({ success: false, error: `HTTP ${response.status}` }))
       updateGroup(group.key, g => ({
         ...g,
@@ -375,16 +354,14 @@ export default function UploadPage() {
       <div className="bg-ucla-blue/20 border border-ucla-blue/40 rounded-lg p-4 mb-8">
         <p className="text-sm text-ucla-gold font-medium">💡 Supported Formats</p>
         <p className="text-xs text-muted-foreground mt-1">
-          <strong>CricClubs:</strong> Match → "Full Scorecard" tab → Save page (Cmd+S or Ctrl+S)
-        </p>
-        <p className="text-xs text-muted-foreground">
-          <strong>CricCenter:</strong> Match → "Scorecard" tab → Save page (Cmd+S or Ctrl+S)
+          Open the match on CricClubs, CricCenter or any other scoring site, go to the scorecard tab,
+          and save the page (Cmd+S or Ctrl+S)
         </p>
         <p className="text-xs text-muted-foreground mt-2">
           📄 Accepts: .html, .htm, .webarchive (Safari Web Archive)
         </p>
         <p className="text-xs text-muted-foreground mt-1">
-          ⚠️ Other tabs (Info, Ball by Ball, Charts, etc.) will not work.
+          ⚠️ The page must show the batting and bowling tables. Other tabs (Info, Ball by Ball, Charts) will not work.
         </p>
       </div>
 
@@ -428,6 +405,9 @@ export default function UploadPage() {
                 </div>
                 <div className="flex-1">
                   <p className="font-medium text-white">{file.filename}</p>
+                  {file.status === 'parsing' && (
+                    <p className="text-sm text-muted-foreground">Reading the scorecard, this can take up to a minute...</p>
+                  )}
                   {file.matchInfo && (
                     <p className="text-sm text-muted-foreground">
                       {file.matchInfo.teams[0]} vs {file.matchInfo.teams[1]} • {file.matchInfo.date}
@@ -625,8 +605,8 @@ export default function UploadPage() {
                                           </span>
                                         ))}
                                         {p.suggestion.type === 'existing' && (
-                                          <span className="ml-2 text-xs text-muted-foreground">
-                                            matched {p.suggestion.playerName}{p.suggestion.isUcla ? '' : ' (guest)'}
+                                          <span className={`ml-2 text-xs ${p.suggestion.guessed ? 'text-orange-400' : 'text-muted-foreground'}`}>
+                                            {p.suggestion.guessed ? 'best guess, check:' : 'matched'} {p.suggestion.playerName}{p.suggestion.isUcla ? '' : ' (guest)'}
                                           </span>
                                         )}
                                       </div>
